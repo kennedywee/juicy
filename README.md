@@ -8,6 +8,8 @@ The first release targets Linux and Wayland. Video is rendered inside the
 application with libmpv; torrent data is temporary and removed after the
 session ends.
 
+![Juicy playing a video, with the overlay controls visible](docs/screenshot.png)
+
 ## Usage
 
 Launch Juicy, paste a magnet link, wait for its metadata, select a video, and

@@ -17,6 +17,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
@@ -223,6 +224,13 @@ MainWindow::MainWindow(QWidget *parent)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    // Right-clicking the video dismisses the overlay straight away.
+    if (watched == m_player && event->type() == QEvent::MouseButtonPress
+        && static_cast<QMouseEvent *>(event)->button() == Qt::RightButton) {
+        m_hideControlsTimer->stop();
+        setControlsVisible(false);
+        return true;
+    }
     if (event->type() == QEvent::MouseMove || event->type() == QEvent::Enter) {
         showControls();
     }

@@ -51,9 +51,19 @@ fi
 
 echo "Installed to ${prefix}"
 
+# The desktop entry is launched by the graphical session, which does not inherit
+# the shell's PATH, so its Exec must be an absolute path that actually exists.
+desktop_exec="$(awk -F= '/^Exec=/ {print $2; exit}' \
+  "${prefix}/share/applications/juicy.desktop")"
+if [[ ! -x "${desktop_exec%% *}" ]]; then
+  echo "Error: the desktop entry's Exec (${desktop_exec}) is not executable." >&2
+  exit 1
+fi
+
 case ":${PATH}:" in
   *":${prefix}/bin:"*) ;;
   *)
-    echo "Warning: ${prefix}/bin is not on PATH, so the desktop entry may not launch." >&2
+    echo "Note: ${prefix}/bin is not on PATH; the menu entry works, but running" >&2
+    echo "'juicy' from a terminal needs the full path." >&2
     ;;
 esac

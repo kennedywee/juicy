@@ -86,10 +86,23 @@ install(
   DIRECTORY assets/anime4k/
   DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/juicy/anime4k"
 )
-install(
-  FILES data/juicy.desktop
-  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
-)
+# A graphical session does not inherit the shell's PATH, so a bare "Exec=juicy"
+# never resolves under a user prefix like ~/.local/bin: the launcher hangs on
+# "launching" and no process starts. Rewrite it at install time, when the real
+# prefix is known (--install --prefix overrides the configured one).
+install(CODE "
+  file(READ \"${CMAKE_CURRENT_SOURCE_DIR}/data/juicy.desktop\" desktop_entry)
+  string(REPLACE
+    \"Exec=juicy\"
+    \"Exec=\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/juicy\"
+    desktop_entry \"\${desktop_entry}\"
+  )
+  file(WRITE
+    \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATAROOTDIR}/applications/juicy.desktop\"
+    \"\${desktop_entry}\"
+  )
+  message(STATUS \"Installing: \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATAROOTDIR}/applications/juicy.desktop\")
+")
 install(
   FILES data/icons/juicy.svg
   DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"

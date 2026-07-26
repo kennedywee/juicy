@@ -257,9 +257,7 @@ void MainWindow::updatePaused(bool paused)
     if (paused) {
         showControls();
     }
-    m_playButton->setIcon(style()->standardIcon(
-        paused ? QStyle::SP_MediaPlay : QStyle::SP_MediaPause
-    ));
+    m_playButton->setText(paused ? QStringLiteral("▶") : QStringLiteral("▮▮"));
     m_playButton->setToolTip(paused ? QStringLiteral("Play") : QStringLiteral("Pause"));
 }
 
@@ -445,8 +443,10 @@ void MainWindow::buildInterface()
     auto *controls = new QHBoxLayout;
     controls->setContentsMargins(12, 0, 12, 0);
 
-    m_playButton = new QPushButton(container);
-    m_playButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
+    // Text glyphs instead of QStyle standard icons: those are fixed dark
+    // pixmaps that stay invisible against the dark overlay.
+    m_playButton = new QPushButton(QStringLiteral("▮▮"), container);
+    m_playButton->setFixedWidth(46);
     m_playButton->setToolTip(QStringLiteral("Pause"));
 
     auto *volume = new QSlider(Qt::Horizontal, container);
@@ -472,8 +472,8 @@ void MainWindow::buildInterface()
     m_anime4kProfile->addItem(QStringLiteral("Anime4K quality"), QStringLiteral("quality"));
     m_anime4kProfile->setEnabled(!anime4kDirectory().isEmpty());
 
-    auto *fullscreen = new QPushButton(container);
-    fullscreen->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
+    auto *fullscreen = new QPushButton(QStringLiteral("□"), container);
+    fullscreen->setFixedWidth(46);
     fullscreen->setToolTip(QStringLiteral("Fullscreen"));
 
     controls->addWidget(m_playButton);
@@ -489,8 +489,7 @@ void MainWindow::buildInterface()
     layout->addWidget(m_bottomPanel, 0, 0, Qt::AlignBottom);
 
     const QString overlayStyle = QStringLiteral(
-        "#overlayPanel { background-color: rgba(16, 16, 16, 180); }"
-        "#overlayPanel QLabel { color: #eeeeee; }"
+        "#overlayPanel { background-color: rgba(40, 35, 32, 215); }"
     );
     m_topPanel->setStyleSheet(overlayStyle);
     m_bottomPanel->setStyleSheet(overlayStyle);

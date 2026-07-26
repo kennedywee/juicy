@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -21,6 +22,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     buildInterface();
+    m_torrentSession = new TorrentSession(this);
     setWindowTitle(QStringLiteral("Juicy"));
     resize(1100, 720);
 
@@ -34,6 +36,18 @@ MainWindow::MainWindow(QWidget *parent)
         this,
         &MainWindow::toggleFullscreen
     );
+    connect(
+        m_torrentSession,
+        &TorrentSession::filesReady,
+        this,
+        &MainWindow::updateTorrentFiles
+    );
+    connect(m_torrentSession, &TorrentSession::statusChanged, this, [this](const QString &status) {
+        statusBar()->showMessage(status);
+    });
+    connect(m_torrentSession, &TorrentSession::errorOccurred, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 8000);
+    });
 }
 
 MpvVideoWidget *MainWindow::player() const
@@ -46,6 +60,12 @@ void MainWindow::openLocalFile(const QString &path)
     m_player->loadFile(path);
 }
 
+void MainWindow::openMagnet(const QString &magnet)
+{
+    m_magnetInput->setText(magnet);
+    loadMagnet();
+}
+
 void MainWindow::setAnime4kProfile(const QString &profile)
 {
     const int index = m_anime4kProfile->findData(profile.toLower());
@@ -56,6 +76,35 @@ void MainWindow::setAnime4kProfile(const QString &profile)
             m_anime4kProfile->setCurrentIndex(index);
         }
     }
+}
+
+void MainWindow::loadMagnet()
+{
+    m_videoFiles->clear();
+    m_videoFiles->setEnabled(false);
+    m_streamButton->setEnabled(false);
+    m_torrentSession->addMagnet(m_magnetInput->text().trimmed());
+}
+
+void MainWindow::startTorrentPlayback()
+{
+    const int fileIndex = m_videoFiles->currentData().toInt();
+    m_torrentSession->selectFile(fileIndex);
+}
+
+void MainWindow::updateTorrentFiles(const QList<TorrentFile> &files)
+{
+    m_videoFiles->clear();
+    for (const TorrentFile &file : files) {
+        const double mebibytes = static_cast<double>(file.size) / (1024.0 * 1024.0);
+        m_videoFiles->addItem(
+            QStringLiteral("%1 · %2 MiB").arg(file.name).arg(mebibytes, 0, 'f', 1),
+            file.index
+        );
+    }
+    const bool hasFiles = !files.isEmpty();
+    m_videoFiles->setEnabled(hasFiles);
+    m_streamButton->setEnabled(hasFiles);
 }
 
 void MainWindow::chooseLocalFile()
@@ -261,6 +310,23 @@ void MainWindow::buildInterface()
     layout->setContentsMargins(0, 0, 0, 8);
     layout->setSpacing(6);
 
+    auto *sourceBar = new QHBoxLayout;
+    sourceBar->setContentsMargins(12, 8, 12, 0);
+    m_magnetInput = new QLineEdit(container);
+    m_magnetInput->setPlaceholderText(QStringLiteral("Paste a magnet link"));
+    m_magnetInput->setClearButtonEnabled(true);
+    auto *loadButton = new QPushButton(QStringLiteral("Load"), container);
+    m_videoFiles = new QComboBox(container);
+    m_videoFiles->setMinimumWidth(260);
+    m_videoFiles->setEnabled(false);
+    m_streamButton = new QPushButton(QStringLiteral("Stream"), container);
+    m_streamButton->setEnabled(false);
+    sourceBar->addWidget(m_magnetInput, 1);
+    sourceBar->addWidget(loadButton);
+    sourceBar->addWidget(m_videoFiles);
+    sourceBar->addWidget(m_streamButton);
+    layout->addLayout(sourceBar);
+
     m_player = new MpvVideoWidget(container);
     m_player->setMinimumSize(640, 360);
     layout->addWidget(m_player, 1);
@@ -324,6 +390,9 @@ void MainWindow::buildInterface()
     setCentralWidget(container);
 
     connect(openButton, &QPushButton::clicked, this, &MainWindow::chooseLocalFile);
+    connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadMagnet);
+    connect(m_magnetInput, &QLineEdit::returnPressed, this, &MainWindow::loadMagnet);
+    connect(m_streamButton, &QPushButton::clicked, this, &MainWindow::startTorrentPlayback);
     connect(m_playButton, &QPushButton::clicked, this, &MainWindow::togglePlayback);
     connect(addSubtitle, &QPushButton::clicked, this, &MainWindow::chooseSubtitleFile);
     connect(fullscreen, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);

@@ -3,9 +3,11 @@
 #include <QMainWindow>
 
 #include "player/MpvVideoWidget.hpp"
+#include "torrent/TorrentSession.hpp"
 
 class QComboBox;
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QSlider;
 
@@ -18,9 +20,13 @@ public:
 
     MpvVideoWidget *player() const;
     void openLocalFile(const QString &path);
+    void openMagnet(const QString &magnet);
     void setAnime4kProfile(const QString &profile);
 
 private slots:
+    void loadMagnet();
+    void startTorrentPlayback();
+    void updateTorrentFiles(const QList<TorrentFile> &files);
     void chooseLocalFile();
     void chooseSubtitleFile();
     void togglePlayback();
@@ -40,6 +46,10 @@ private:
     void updateTimeLabel();
 
     MpvVideoWidget *m_player = nullptr;
+    TorrentSession *m_torrentSession = nullptr;
+    QLineEdit *m_magnetInput = nullptr;
+    QComboBox *m_videoFiles = nullptr;
+    QPushButton *m_streamButton = nullptr;
     QPushButton *m_playButton = nullptr;
     QSlider *m_seekSlider = nullptr;
     QLabel *m_timeLabel = nullptr;

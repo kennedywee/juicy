@@ -32,7 +32,13 @@ int main(int argc, char *argv[])
         QStringLiteral("profile"),
         QStringLiteral("off")
     );
+    QCommandLineOption magnetOption(
+        QStringLiteral("magnet"),
+        QStringLiteral("Load a magnet link when the application starts."),
+        QStringLiteral("uri")
+    );
     parser.addOption(anime4kOption);
+    parser.addOption(magnetOption);
     parser.addPositionalArgument(QStringLiteral("video"), QStringLiteral("Local video used for player testing."));
     parser.process(application);
 
@@ -45,6 +51,10 @@ int main(int argc, char *argv[])
         qInfo() << "libmpv loaded the video";
     });
     window.show();
+
+    if (parser.isSet(magnetOption)) {
+        window.openMagnet(parser.value(magnetOption));
+    }
 
     const QStringList arguments = parser.positionalArguments();
     if (!arguments.isEmpty()) {

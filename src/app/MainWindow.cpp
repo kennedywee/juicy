@@ -196,11 +196,13 @@ MainWindow::MainWindow(QWidget *parent)
         }
     );
     connect(m_player, &MpvVideoWidget::fatalError, this, [this](const QString &message) {
+        abandonAutoPlay();
         showToast(message);
         m_diagnostics->setError(message);
         m_diagnostics->setPlaybackState(QStringLiteral("Player error"));
     });
     connect(m_player, &MpvVideoWidget::playbackError, this, [this](const QString &message) {
+        abandonAutoPlay();
         showToast(message);
         m_diagnostics->setError(message);
         m_diagnostics->setPlaybackState(QStringLiteral("Error"));
@@ -212,6 +214,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_player, &MpvVideoWidget::fileLoaded, this, [this] {
         m_torrentFileLoaded = true;
+        abandonAutoPlay();
         m_diagnostics->setPlaybackState(QStringLiteral("Playing"));
     });
     connect(
@@ -239,6 +242,7 @@ MainWindow::MainWindow(QWidget *parent)
         &DiagnosticsPanel::setTorrentStats
     );
     connect(m_torrentSession, &TorrentSession::errorOccurred, this, [this](const QString &message) {
+        abandonAutoPlay();
         showToast(message);
         m_diagnostics->setError(message);
     });
@@ -280,6 +284,23 @@ MainWindow::MainWindow(QWidget *parent)
     m_toastTimer->setSingleShot(true);
     m_toastTimer->setInterval(6000);
     connect(m_toastTimer, &QTimer::timeout, m_toast, &QLabel::hide);
+    m_pasteTimer = new QTimer(this);
+    m_pasteTimer->setSingleShot(true);
+    m_pasteTimer->setInterval(400);
+    connect(m_pasteTimer, &QTimer::timeout, this, &MainWindow::autoLoadMagnet);
+    m_blinkTimer = new QTimer(this);
+    m_blinkTimer->setInterval(450);
+    connect(m_blinkTimer, &QTimer::timeout, this, [this] {
+        if (m_blinkTarget == nullptr) {
+            return;
+        }
+        m_blinkOn = !m_blinkOn;
+        m_blinkTarget->setStyleSheet(
+            m_blinkOn
+                ? QStringLiteral("background-color: #d8d1c7; color: #211d1a;")
+                : QString()
+        );
+    });
     m_clickTimer = new QTimer(this);
     m_clickTimer->setSingleShot(true);
     m_clickTimer->setInterval(QApplication::doubleClickInterval());
@@ -406,6 +427,32 @@ void MainWindow::showToast(const QString &message)
     m_toastTimer->start();
 }
 
+// Blinks whichever button stands for the step auto-play is on: Load while the
+// metadata is fetched, Stream while the video buffers.
+void MainWindow::startBlinking(QPushButton *button)
+{
+    stopBlinking();
+    m_blinkTarget = button;
+    m_blinkOn = false;
+    m_blinkTimer->start();
+}
+
+void MainWindow::abandonAutoPlay()
+{
+    m_autoPlayPending = false;
+    stopBlinking();
+}
+
+void MainWindow::stopBlinking()
+{
+    m_blinkTimer->stop();
+    if (m_blinkTarget != nullptr) {
+        // Clearing the local sheet hands the button back to the app stylesheet.
+        m_blinkTarget->setStyleSheet(QString());
+        m_blinkTarget = nullptr;
+    }
+}
+
 void MainWindow::setDiagnosticsVisible(bool visible)
 {
     m_diagnostics->setVisible(visible);
@@ -488,7 +535,30 @@ void MainWindow::loadMagnet()
     m_videoFiles->clear();
     m_videoFiles->setEnabled(false);
     m_streamButton->setEnabled(false);
-    m_torrentSession->addMagnet(m_magnetInput->text().trimmed());
+    m_loadedMagnet = m_magnetInput->text().trimmed();
+    m_torrentSession->addMagnet(m_loadedMagnet);
+}
+
+// A pasted magnet should just play. Debounced, so typing a link by hand does
+// not fire a load on every keystroke, and gated on the link looking complete.
+void MainWindow::autoLoadMagnet()
+{
+    const QString magnet = m_magnetInput->text().trimmed();
+    if (magnet == m_loadedMagnet
+        || !magnet.startsWith(QStringLiteral("magnet:?"))
+        || !magnet.contains(QStringLiteral("xt=urn:btih:"))) {
+        return;
+    }
+    beginAutoPlay();
+}
+
+// Blinks Load while the metadata is fetched; updateTorrentFiles moves the
+// blink to Stream, and reaching playback clears it.
+void MainWindow::beginAutoPlay()
+{
+    m_autoPlayPending = true;
+    startBlinking(m_loadButton);
+    loadMagnet();
 }
 
 void MainWindow::startTorrentPlayback()
@@ -511,7 +581,8 @@ void MainWindow::updateTorrentFiles(const QList<TorrentFile> &files)
     const bool hasFiles = !files.isEmpty();
     m_videoFiles->setEnabled(hasFiles);
     m_streamButton->setEnabled(hasFiles);
-    if (hasFiles && m_autoStream) {
+    if (hasFiles && (m_autoStream || m_autoPlayPending)) {
+        startBlinking(m_streamButton);
         startTorrentPlayback();
     }
 }
@@ -762,14 +833,14 @@ void MainWindow::buildInterface()
     m_magnetInput = new QLineEdit(container);
     m_magnetInput->setPlaceholderText(QStringLiteral("Paste a magnet link"));
     m_magnetInput->setClearButtonEnabled(true);
-    auto *loadButton = new QPushButton(QStringLiteral("Load"), container);
+    m_loadButton = new QPushButton(QStringLiteral("Load"), container);
     m_videoFiles = new QComboBox(container);
     m_videoFiles->setMinimumWidth(260);
     m_videoFiles->setEnabled(false);
     m_streamButton = new QPushButton(QStringLiteral("Stream"), container);
     m_streamButton->setEnabled(false);
     sourceBar->addWidget(m_magnetInput, 1);
-    sourceBar->addWidget(loadButton);
+    sourceBar->addWidget(m_loadButton);
     sourceBar->addWidget(m_videoFiles);
     sourceBar->addWidget(m_streamButton);
     layout->addWidget(m_topPanel, 0, 0, Qt::AlignTop);
@@ -867,8 +938,17 @@ void MainWindow::buildInterface()
     m_bottomPanel->raise();
     setCentralWidget(container);
 
-    connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadMagnet);
-    connect(m_magnetInput, &QLineEdit::returnPressed, this, &MainWindow::loadMagnet);
+    // The Load button is the manual escape hatch: fetch the file list and stop
+    // there, so the picker and Stream button still work as before. Return in
+    // the field means "go", so it takes the same auto-play path as a paste.
+    connect(m_loadButton, &QPushButton::clicked, this, [this] {
+        abandonAutoPlay();
+        loadMagnet();
+    });
+    connect(m_magnetInput, &QLineEdit::returnPressed, this, &MainWindow::beginAutoPlay);
+    connect(m_magnetInput, &QLineEdit::textChanged, this, [this] {
+        m_pasteTimer->start();
+    });
     connect(m_streamButton, &QPushButton::clicked, this, &MainWindow::startTorrentPlayback);
     connect(m_playButton, &QPushButton::clicked, this, &MainWindow::togglePlayback);
     connect(m_volumeButton, &QPushButton::clicked, this, &MainWindow::toggleMute);

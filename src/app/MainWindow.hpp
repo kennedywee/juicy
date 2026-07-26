@@ -37,6 +37,7 @@ protected:
 
 private slots:
     void loadMagnet();
+    void autoLoadMagnet();
     void startTorrentPlayback();
     void updateTorrentFiles(const QList<TorrentFile> &files);
     void chooseSubtitleFile();
@@ -70,6 +71,10 @@ private:
     void updateTimeLabel();
     void showControls();
     void showToast(const QString &message);
+    void beginAutoPlay();
+    void abandonAutoPlay();
+    void startBlinking(QPushButton *button);
+    void stopBlinking();
     void setDiagnosticsVisible(bool visible);
     void seekBy(double seconds);
     void adjustVolume(int delta);
@@ -82,7 +87,9 @@ private:
     DiagnosticsPanel *m_diagnostics = nullptr;
     QLineEdit *m_magnetInput = nullptr;
     QComboBox *m_videoFiles = nullptr;
+    QPushButton *m_loadButton = nullptr;
     QPushButton *m_streamButton = nullptr;
+    QPushButton *m_blinkTarget = nullptr;
     QPushButton *m_playButton = nullptr;
     QPushButton *m_volumeButton = nullptr;
     SeekSlider *m_seekSlider = nullptr;
@@ -101,15 +108,20 @@ private:
     QWidget *m_bottomPanel = nullptr;
     QTimer *m_hideControlsTimer = nullptr;
     QTimer *m_toastTimer = nullptr;
+    QTimer *m_pasteTimer = nullptr;
+    QTimer *m_blinkTimer = nullptr;
     QTimer *m_clickTimer = nullptr;
     QIcon m_playIcon;
     QIcon m_pauseIcon;
     QIcon m_volumeIcon;
     QIcon m_mutedIcon;
+    QString m_loadedMagnet;
     double m_position = 0.0;
     double m_duration = 0.0;
     bool m_paused = false;
     bool m_autoStream = false;
     bool m_torrentFileLoaded = false;
     bool m_muted = false;
+    bool m_autoPlayPending = false;
+    bool m_blinkOn = false;
 };

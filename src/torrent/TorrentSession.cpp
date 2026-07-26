@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -155,11 +156,24 @@ struct TorrentSession::Impl
         }
     }
 
+    void publishStreamWhenReady()
+    {
+        if (!content || !pendingStream || !content->playbackReady()) {
+            return;
+        }
+
+        const TorrentFile file = *pendingStream;
+        pendingStream.reset();
+        emit q->streamReady(content, file);
+        emit q->statusChanged(QStringLiteral("Starting %1").arg(file.name));
+    }
+
     QTemporaryDir temporaryDirectory;
     TorrentSession *q = nullptr;
     std::unique_ptr<lt::session> session;
     lt::torrent_handle handle;
     std::shared_ptr<TorrentContent> content;
+    std::optional<TorrentFile> pendingStream;
     QList<TorrentFile> files;
     QString initializationError;
     QString currentSavePath;
@@ -212,6 +226,7 @@ bool TorrentSession::addMagnet(const QString &magnet)
             m_impl->content->stop();
             m_impl->content.reset();
         }
+        m_impl->pendingStream.reset();
         m_impl->session->remove_torrent(m_impl->handle);
         m_impl->handle = {};
         m_impl->files.clear();
@@ -271,9 +286,11 @@ bool TorrentSession::selectFile(int fileIndex)
         fileIndex,
         m_impl->currentSavePath
     );
+    m_impl->pendingStream = *match;
+    m_impl->content->prepareForPlayback();
     emit fileSelected(*match);
-    emit streamReady(m_impl->content, *match);
-    emit statusChanged(QStringLiteral("Selected %1").arg(match->name));
+    emit statusChanged(QStringLiteral("Preparing %1…").arg(match->name));
+    m_impl->publishStreamWhenReady();
     return true;
 }
 
@@ -317,6 +334,7 @@ void TorrentSession::processAlerts()
         } else if (const auto *piece = lt::alert_cast<lt::piece_finished_alert>(alert)) {
             if (piece->handle == m_impl->handle && m_impl->content) {
                 m_impl->content->notifyPieceAvailable();
+                m_impl->publishStreamWhenReady();
             }
         }
     }
@@ -338,8 +356,9 @@ void TorrentSession::updateStatus()
         return;
     }
 
+    m_impl->publishStreamWhenReady();
     emit statusChanged(
-        QStringLiteral("%1 · %2 peer(s) · %3 downloaded")
+        QStringLiteral("%1 · %2 peer(s) · %3 downloaded%4")
             .arg(humanRate(status.download_rate))
             .arg(status.num_peers)
             .arg(QString::number(
@@ -347,5 +366,8 @@ void TorrentSession::updateStatus()
                 'f',
                 1
             ) + QStringLiteral(" MiB"))
+            .arg(m_impl->pendingStream
+                     ? QStringLiteral(" · preparing playback")
+                     : QString())
     );
 }

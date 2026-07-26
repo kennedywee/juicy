@@ -69,6 +69,38 @@ void TorrentContent::notifyPieceAvailable()
     m_pieceChanged.notify_all();
 }
 
+void TorrentContent::prepareForPlayback()
+{
+    if (!m_handle.is_valid() || m_pieceLength <= 0 || m_fileSize <= 0) {
+        return;
+    }
+
+    const int firstPiece = static_cast<int>(m_fileStart / m_pieceLength);
+    const int lastPiece = static_cast<int>(
+        (m_fileStart + m_fileSize - 1) / m_pieceLength
+    );
+    m_handle.clear_piece_deadlines();
+    m_handle.set_piece_deadline(lt::piece_index_t(firstPiece), 0);
+    if (lastPiece != firstPiece) {
+        m_handle.set_piece_deadline(lt::piece_index_t(lastPiece), 0);
+    }
+}
+
+bool TorrentContent::playbackReady() const
+{
+    if (!m_handle.is_valid() || m_pieceLength <= 0 || m_fileSize <= 0) {
+        return false;
+    }
+
+    const lt::piece_index_t firstPiece(
+        static_cast<int>(m_fileStart / m_pieceLength)
+    );
+    const lt::piece_index_t lastPiece(
+        static_cast<int>((m_fileStart + m_fileSize - 1) / m_pieceLength)
+    );
+    return m_handle.have_piece(firstPiece) && m_handle.have_piece(lastPiece);
+}
+
 void TorrentContent::stop()
 {
     m_stopping.store(true);

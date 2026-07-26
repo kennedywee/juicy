@@ -32,6 +32,8 @@ public:
 
     std::unique_ptr<TorrentFileStream> openStream();
     void notifyPieceAvailable();
+    void prepareForPlayback();
+    bool playbackReady() const;
     void stop();
 
     qint64 size() const;

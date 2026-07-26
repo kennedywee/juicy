@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+deps_root="${project_dir}/.deps/root"
+release_dir="${project_dir}/build-release"
+prefix="${1:-${HOME}/.local}"
+
+cmake_bin="${deps_root}/usr/bin/cmake"
+ninja_bin="${deps_root}/usr/bin/ninja"
+
+if [[ ! -x "${cmake_bin}" ]]; then
+  cmake_bin="$(command -v cmake)"
+fi
+
+if [[ ! -x "${ninja_bin}" ]]; then
+  ninja_bin="$(command -v ninja)"
+fi
+
+if [[ -d "${deps_root}/usr/lib" ]]; then
+  export LD_LIBRARY_PATH="${deps_root}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+# Always build the release tree, never build/, so an install cannot pick up a
+# stale binary from the debug tree.
+"${cmake_bin}" \
+  -S "${project_dir}" \
+  -B "${release_dir}" \
+  -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_MAKE_PROGRAM="${ninja_bin}" \
+  -DJUICY_DEPS_ROOT="${deps_root}"
+"${cmake_bin}" --build "${release_dir}"
+"${cmake_bin}" --install "${release_dir}" --prefix "${prefix}"
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database "${prefix}/share/applications" 2>/dev/null || true
+fi
+
+# The build tree resolves libraries through BUILD_RPATH, which is stripped on
+# install, so an installed binary can need libraries the build never missed.
+# Checked without LD_LIBRARY_PATH: the desktop entry launches without it too.
+missing="$(env -u LD_LIBRARY_PATH ldd "${prefix}/bin/juicy" 2>/dev/null \
+  | awk '/not found/ {print "  " $1}')"
+if [[ -n "${missing}" ]]; then
+  echo "Error: the installed binary cannot resolve these libraries:" >&2
+  echo "${missing}" >&2
+  echo "Install them system-wide; the build tree used ${deps_root}." >&2
+  exit 1
+fi
+
+echo "Installed to ${prefix}"
+
+case ":${PATH}:" in
+  *":${prefix}/bin:"*) ;;
+  *)
+    echo "Warning: ${prefix}/bin is not on PATH, so the desktop entry may not launch." >&2
+    ;;
+esac

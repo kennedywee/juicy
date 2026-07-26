@@ -53,6 +53,20 @@ Run the test suite:
 scripts/test
 ```
 
+Install Juicy as a desktop application, which also registers its menu entry
+and icon:
+
+```bash
+scripts/install            # installs into ~/.local
+scripts/install /usr/local # system-wide, needs sudo
+```
+
+The script always builds `build-release`, never the debug tree, so an install
+cannot pick up a stale binary. Run it again after any change to update the
+installed copy. It refuses to finish if the installed binary cannot resolve
+its shared libraries, which happens when a dependency exists only under
+`.deps` and not system-wide.
+
 Build an installable Linux archive:
 
 ```bash

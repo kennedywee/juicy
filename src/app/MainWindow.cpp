@@ -2,11 +2,15 @@
 
 #include <cmath>
 
+#include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -15,6 +19,7 @@
 #include <QSlider>
 #include <QStyle>
 #include <QStatusBar>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -88,6 +93,53 @@ MainWindow::MainWindow(QWidget *parent)
             }
         }
     );
+
+    m_hideControlsTimer = new QTimer(this);
+    m_hideControlsTimer->setSingleShot(true);
+    m_hideControlsTimer->setInterval(3000);
+    connect(m_hideControlsTimer, &QTimer::timeout, this, [this] {
+        if (shouldKeepControlsVisible()) {
+            m_hideControlsTimer->start();
+        } else {
+            setControlsVisible(false);
+        }
+    });
+    m_player->setMouseTracking(true);
+    m_player->installEventFilter(this);
+    m_topPanel->installEventFilter(this);
+    m_bottomPanel->installEventFilter(this);
+    m_hideControlsTimer->start();
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::MouseMove || event->type() == QEvent::Enter) {
+        showControls();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::showControls()
+{
+    setControlsVisible(true);
+    m_hideControlsTimer->start();
+}
+
+void MainWindow::setControlsVisible(bool visible)
+{
+    m_topPanel->setVisible(visible);
+    m_bottomPanel->setVisible(visible);
+    statusBar()->setVisible(visible);
+    m_player->setCursor(visible ? Qt::ArrowCursor : Qt::BlankCursor);
+}
+
+bool MainWindow::shouldKeepControlsVisible() const
+{
+    return !m_torrentFileLoaded
+        || m_paused
+        || QApplication::mouseButtons() != Qt::NoButton
+        || m_magnetInput->hasFocus()
+        || QApplication::activePopupWidget() != nullptr;
 }
 
 MpvVideoWidget *MainWindow::player() const
@@ -125,6 +177,7 @@ void MainWindow::setAnime4kProfile(const QString &profile)
 
 void MainWindow::loadMagnet()
 {
+    m_magnetInput->clearFocus();
     m_videoFiles->clear();
     m_videoFiles->setEnabled(false);
     m_streamButton->setEnabled(false);
@@ -201,6 +254,9 @@ void MainWindow::updateDuration(double seconds)
 void MainWindow::updatePaused(bool paused)
 {
     m_paused = paused;
+    if (paused) {
+        showControls();
+    }
     m_playButton->setIcon(style()->standardIcon(
         paused ? QStyle::SP_MediaPlay : QStyle::SP_MediaPause
     ));
@@ -341,12 +397,19 @@ QStringList MainWindow::anime4kShaderFiles(int profileIndex)
 void MainWindow::buildInterface()
 {
     auto *container = new QWidget(this);
-    auto *layout = new QVBoxLayout(container);
-    layout->setContentsMargins(0, 0, 0, 8);
-    layout->setSpacing(6);
+    auto *layout = new QGridLayout(container);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
 
-    auto *sourceBar = new QHBoxLayout;
-    sourceBar->setContentsMargins(12, 8, 12, 0);
+    m_player = new MpvVideoWidget(container);
+    m_player->setMinimumSize(640, 360);
+    layout->addWidget(m_player, 0, 0);
+
+    m_topPanel = new QWidget(container);
+    m_topPanel->setObjectName(QStringLiteral("overlayPanel"));
+    m_topPanel->setAttribute(Qt::WA_StyledBackground, true);
+    auto *sourceBar = new QHBoxLayout(m_topPanel);
+    sourceBar->setContentsMargins(12, 8, 12, 8);
     m_magnetInput = new QLineEdit(container);
     m_magnetInput->setPlaceholderText(QStringLiteral("Paste a magnet link"));
     m_magnetInput->setClearButtonEnabled(true);
@@ -360,11 +423,14 @@ void MainWindow::buildInterface()
     sourceBar->addWidget(loadButton);
     sourceBar->addWidget(m_videoFiles);
     sourceBar->addWidget(m_streamButton);
-    layout->addLayout(sourceBar);
+    layout->addWidget(m_topPanel, 0, 0, Qt::AlignTop);
 
-    m_player = new MpvVideoWidget(container);
-    m_player->setMinimumSize(640, 360);
-    layout->addWidget(m_player, 1);
+    m_bottomPanel = new QWidget(container);
+    m_bottomPanel->setObjectName(QStringLiteral("overlayPanel"));
+    m_bottomPanel->setAttribute(Qt::WA_StyledBackground, true);
+    auto *bottomLayout = new QVBoxLayout(m_bottomPanel);
+    bottomLayout->setContentsMargins(0, 6, 0, 8);
+    bottomLayout->setSpacing(6);
 
     auto *timeline = new QHBoxLayout;
     timeline->setContentsMargins(12, 0, 12, 0);
@@ -374,7 +440,7 @@ void MainWindow::buildInterface()
     m_timeLabel->setMinimumWidth(105);
     timeline->addWidget(m_seekSlider, 1);
     timeline->addWidget(m_timeLabel);
-    layout->addLayout(timeline);
+    bottomLayout->addLayout(timeline);
 
     auto *controls = new QHBoxLayout;
     controls->setContentsMargins(12, 0, 12, 0);
@@ -419,7 +485,17 @@ void MainWindow::buildInterface()
     controls->addWidget(addSubtitle);
     controls->addWidget(m_anime4kProfile);
     controls->addWidget(fullscreen);
-    layout->addLayout(controls);
+    bottomLayout->addLayout(controls);
+    layout->addWidget(m_bottomPanel, 0, 0, Qt::AlignBottom);
+
+    const QString overlayStyle = QStringLiteral(
+        "#overlayPanel { background-color: rgba(16, 16, 16, 180); }"
+        "#overlayPanel QLabel { color: #eeeeee; }"
+    );
+    m_topPanel->setStyleSheet(overlayStyle);
+    m_bottomPanel->setStyleSheet(overlayStyle);
+    m_topPanel->raise();
+    m_bottomPanel->raise();
     setCentralWidget(container);
     m_playbackStatus = new QLabel(QStringLiteral("Idle"), this);
     statusBar()->addPermanentWidget(m_playbackStatus);

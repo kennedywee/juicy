@@ -10,6 +10,7 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSlider;
+class QTimer;
 
 class MainWindow final : public QMainWindow
 {
@@ -23,6 +24,9 @@ public:
     void openMagnet(const QString &magnet);
     void setAutoStream(bool enabled);
     void setAnime4kProfile(const QString &profile);
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void loadMagnet();
@@ -44,6 +48,9 @@ private:
     static QStringList anime4kShaderFiles(int profileIndex);
     void buildInterface();
     void updateTimeLabel();
+    void showControls();
+    void setControlsVisible(bool visible);
+    bool shouldKeepControlsVisible() const;
 
     MpvVideoWidget *m_player = nullptr;
     TorrentSession *m_torrentSession = nullptr;
@@ -57,6 +64,9 @@ private:
     QComboBox *m_subtitleTracks = nullptr;
     QComboBox *m_anime4kProfile = nullptr;
     QLabel *m_playbackStatus = nullptr;
+    QWidget *m_topPanel = nullptr;
+    QWidget *m_bottomPanel = nullptr;
+    QTimer *m_hideControlsTimer = nullptr;
     double m_position = 0.0;
     double m_duration = 0.0;
     bool m_paused = false;

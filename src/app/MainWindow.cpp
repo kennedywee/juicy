@@ -38,6 +38,11 @@ MainWindow::MainWindow(QWidget *parent)
         statusBar()->showMessage(message, 8000);
         m_playbackStatus->setText(message);
     });
+    connect(m_player, &MpvVideoWidget::playbackRetrying, this, [this](int attempt) {
+        m_playbackStatus->setText(
+            QStringLiteral("Retrying video… (%1/2)").arg(attempt)
+        );
+    });
     connect(m_player, &MpvVideoWidget::fileLoaded, this, [this] {
         m_playbackStatus->setText(QStringLiteral("Playing"));
     });

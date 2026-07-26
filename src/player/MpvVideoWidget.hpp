@@ -48,6 +48,7 @@ public:
 signals:
     void fatalError(const QString &message);
     void playbackError(const QString &message);
+    void playbackRetrying(int attempt);
     void fileLoaded();
     void positionChanged(double seconds);
     void durationChanged(double seconds);
@@ -84,6 +85,7 @@ private:
 
     bool initializeMpv();
     bool issueCommand(const QStringList &arguments);
+    void loadCurrentFile();
     void processEvent(const mpv_event &event);
     void refreshTracks();
     void reportMpvError(const QString &operation, int errorCode);
@@ -91,6 +93,9 @@ private:
     mpv_handle *m_mpv = nullptr;
     mpv_render_context *m_renderContext = nullptr;
     QString m_pendingFile;
+    QString m_currentFile;
+    int m_loadGeneration = 0;
+    int m_torrentRetryCount = 0;
     std::mutex m_torrentContentMutex;
     std::shared_ptr<TorrentContent> m_torrentContent;
 };

@@ -10,6 +10,7 @@
 #include <QMouseEvent>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
+#include <QTimer>
 
 extern "C" {
 #include <mpv/client.h>
@@ -97,12 +98,15 @@ MpvVideoWidget::~MpvVideoWidget()
 
 void MpvVideoWidget::loadFile(const QString &path)
 {
+    m_currentFile = path;
+    ++m_loadGeneration;
+    m_torrentRetryCount = 0;
     if (m_renderContext == nullptr) {
         m_pendingFile = path;
         return;
     }
 
-    issueCommand({QStringLiteral("loadfile"), path, QStringLiteral("replace")});
+    loadCurrentFile();
 }
 
 void MpvVideoWidget::setPaused(bool paused)
@@ -429,6 +433,15 @@ bool MpvVideoWidget::issueCommand(const QStringList &arguments)
     return true;
 }
 
+void MpvVideoWidget::loadCurrentFile()
+{
+    QString path = m_currentFile;
+    if (path.startsWith(QStringLiteral("juicy://"))) {
+        path += QStringLiteral("?attempt=%1").arg(m_torrentRetryCount);
+    }
+    issueCommand({QStringLiteral("loadfile"), path, QStringLiteral("replace")});
+}
+
 void MpvVideoWidget::processEvent(const mpv_event &event)
 {
     switch (event.event_id) {
@@ -439,6 +452,18 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
     case MPV_EVENT_END_FILE: {
         const auto *end = static_cast<const mpv_event_end_file *>(event.data);
         if (end != nullptr && end->reason == MPV_END_FILE_REASON_ERROR) {
+            if (m_currentFile.startsWith(QStringLiteral("juicy://"))
+                && m_torrentRetryCount < 2) {
+                ++m_torrentRetryCount;
+                const int generation = m_loadGeneration;
+                emit playbackRetrying(m_torrentRetryCount);
+                QTimer::singleShot(1000, this, [this, generation] {
+                    if (generation == m_loadGeneration) {
+                        loadCurrentFile();
+                    }
+                });
+                break;
+            }
             emit playbackError(
                 QStringLiteral("Playback failed: %1")
                     .arg(QString::fromUtf8(mpv_error_string(end->error)))

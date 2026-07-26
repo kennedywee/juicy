@@ -101,6 +101,7 @@ void MpvVideoWidget::loadFile(const QString &path)
     m_currentFile = path;
     ++m_loadGeneration;
     m_torrentRetryCount = 0;
+    m_currentFileLoaded = false;
     if (m_renderContext == nullptr) {
         m_pendingFile = path;
         return;
@@ -311,7 +312,6 @@ int MpvVideoWidget::openTorrentStream(
         || !QByteArray(uri).startsWith("juicy://")) {
         return MPV_ERROR_LOADING_FAILED;
     }
-
     std::shared_ptr<TorrentContent> content;
     {
         std::scoped_lock lock(widget->m_torrentContentMutex);
@@ -435,6 +435,7 @@ bool MpvVideoWidget::issueCommand(const QStringList &arguments)
 
 void MpvVideoWidget::loadCurrentFile()
 {
+    m_currentFileLoaded = false;
     QString path = m_currentFile;
     if (path.startsWith(QStringLiteral("juicy://"))) {
         path += QStringLiteral("?attempt=%1").arg(m_torrentRetryCount);
@@ -446,14 +447,22 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
 {
     switch (event.event_id) {
     case MPV_EVENT_FILE_LOADED:
+        m_currentFileLoaded = true;
         refreshTracks();
         emit fileLoaded();
         break;
     case MPV_EVENT_END_FILE: {
         const auto *end = static_cast<const mpv_event_end_file *>(event.data);
-        if (end != nullptr && end->reason == MPV_END_FILE_REASON_ERROR) {
-            if (m_currentFile.startsWith(QStringLiteral("juicy://"))
-                && m_torrentRetryCount < 2) {
+        if (end != nullptr) {
+            qInfo() << "libmpv end-file reason" << end->reason
+                    << "error" << end->error
+                    << "loaded" << m_currentFileLoaded;
+            const bool torrentProbeFailed =
+                m_currentFile.startsWith(QStringLiteral("juicy://"))
+                && !m_currentFileLoaded
+                && (end->reason == MPV_END_FILE_REASON_ERROR
+                    || end->reason == MPV_END_FILE_REASON_EOF);
+            if (torrentProbeFailed && m_torrentRetryCount < 2) {
                 ++m_torrentRetryCount;
                 const int generation = m_loadGeneration;
                 emit playbackRetrying(m_torrentRetryCount);
@@ -464,10 +473,16 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
                 });
                 break;
             }
-            emit playbackError(
-                QStringLiteral("Playback failed: %1")
-                    .arg(QString::fromUtf8(mpv_error_string(end->error)))
-            );
+            if (end->reason == MPV_END_FILE_REASON_ERROR) {
+                emit playbackError(
+                    QStringLiteral("Playback failed: %1")
+                        .arg(QString::fromUtf8(mpv_error_string(end->error)))
+                );
+            } else if (torrentProbeFailed) {
+                emit playbackError(
+                    QStringLiteral("Playback ended before the video could be opened.")
+                );
+            }
         }
         break;
     }

@@ -174,6 +174,7 @@ struct TorrentSession::Impl
     lt::torrent_handle handle;
     std::shared_ptr<TorrentContent> content;
     std::optional<TorrentFile> pendingStream;
+    bool selectedFileCompleteEmitted = false;
     QList<TorrentFile> files;
     QString initializationError;
     QString currentSavePath;
@@ -227,6 +228,7 @@ bool TorrentSession::addMagnet(const QString &magnet)
             m_impl->content.reset();
         }
         m_impl->pendingStream.reset();
+        m_impl->selectedFileCompleteEmitted = false;
         m_impl->session->remove_torrent(m_impl->handle);
         m_impl->handle = {};
         m_impl->files.clear();
@@ -287,6 +289,7 @@ bool TorrentSession::selectFile(int fileIndex)
         m_impl->currentSavePath
     );
     m_impl->pendingStream = *match;
+    m_impl->selectedFileCompleteEmitted = false;
     emit fileSelected(*match);
     emit statusChanged(QStringLiteral("Preparing %1…").arg(match->name));
     m_impl->publishStreamWhenReady();
@@ -362,6 +365,12 @@ void TorrentSession::updateStatus()
     }
 
     m_impl->publishStreamWhenReady();
+    if (m_impl->content && !m_impl->selectedFileCompleteEmitted
+        && status.total_wanted > 0
+        && status.total_wanted_done >= status.total_wanted) {
+        m_impl->selectedFileCompleteEmitted = true;
+        emit selectedFileComplete(m_impl->content->filePath());
+    }
     emit statusChanged(
         QStringLiteral("%1 · %2 peer(s) · %3 downloaded%4")
             .arg(humanRate(status.download_rate))

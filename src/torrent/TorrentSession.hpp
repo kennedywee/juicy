@@ -41,6 +41,7 @@ signals:
         const std::shared_ptr<TorrentContent> &content,
         const TorrentFile &file
     );
+    void selectedFileComplete(const QString &path);
 
 private slots:
     void processAlerts();

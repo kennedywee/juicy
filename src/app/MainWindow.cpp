@@ -44,6 +44,7 @@ MainWindow::MainWindow(QWidget *parent)
         );
     });
     connect(m_player, &MpvVideoWidget::fileLoaded, this, [this] {
+        m_torrentFileLoaded = true;
         m_playbackStatus->setText(QStringLiteral("Playing"));
     });
     connect(
@@ -69,10 +70,22 @@ MainWindow::MainWindow(QWidget *parent)
         &TorrentSession::streamReady,
         this,
         [this](const std::shared_ptr<TorrentContent> &content, const TorrentFile &file) {
+            m_torrentFileLoaded = false;
             m_player->setTorrentContent(content);
             m_player->loadFile(QStringLiteral("juicy://video"));
             m_playbackStatus->setText(QStringLiteral("Opening video…"));
             statusBar()->showMessage(QStringLiteral("Buffering %1…").arg(file.name));
+        }
+    );
+    connect(
+        m_torrentSession,
+        &TorrentSession::selectedFileComplete,
+        this,
+        [this](const QString &path) {
+            if (!m_torrentFileLoaded) {
+                m_playbackStatus->setText(QStringLiteral("Opening completed file…"));
+                m_player->loadFile(path);
+            }
         }
     );
 }

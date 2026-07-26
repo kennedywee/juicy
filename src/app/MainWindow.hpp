@@ -61,4 +61,5 @@ private:
     double m_duration = 0.0;
     bool m_paused = false;
     bool m_autoStream = false;
+    bool m_torrentFileLoaded = false;
 };

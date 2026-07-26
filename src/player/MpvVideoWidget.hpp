@@ -96,6 +96,7 @@ private:
     QString m_currentFile;
     int m_loadGeneration = 0;
     int m_torrentRetryCount = 0;
+    bool m_currentFileLoaded = false;
     std::mutex m_torrentContentMutex;
     std::shared_ptr<TorrentContent> m_torrentContent;
 };

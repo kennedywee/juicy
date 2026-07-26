@@ -37,6 +37,7 @@ public:
 
     void loadFile(const QString &path);
     void setPaused(bool paused);
+    void setMuted(bool muted);
     void seekTo(double seconds);
     void setVolume(int percent);
     void selectAudioTrack(qint64 id);

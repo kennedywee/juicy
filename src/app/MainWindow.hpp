@@ -29,6 +29,7 @@ public:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
 
 private slots:
     void loadMagnet();
@@ -51,6 +52,9 @@ private:
     void buildInterface();
     void updateTimeLabel();
     void showControls();
+    void seekBy(double seconds);
+    void adjustVolume(int delta);
+    void toggleMute();
     void setControlsVisible(bool visible);
     bool shouldKeepControlsVisible() const;
 
@@ -61,6 +65,7 @@ private:
     QPushButton *m_streamButton = nullptr;
     QPushButton *m_playButton = nullptr;
     QSlider *m_seekSlider = nullptr;
+    QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
     QComboBox *m_audioTracks = nullptr;
     QComboBox *m_subtitleTracks = nullptr;
@@ -77,4 +82,5 @@ private:
     bool m_paused = false;
     bool m_autoStream = false;
     bool m_torrentFileLoaded = false;
+    bool m_muted = false;
 };

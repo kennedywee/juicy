@@ -119,6 +119,15 @@ void MpvVideoWidget::setPaused(bool paused)
     });
 }
 
+void MpvVideoWidget::setMuted(bool muted)
+{
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("mute"),
+        muted ? QStringLiteral("yes") : QStringLiteral("no"),
+    });
+}
+
 void MpvVideoWidget::seekTo(double seconds)
 {
     issueCommand({

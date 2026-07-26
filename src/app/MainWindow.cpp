@@ -14,6 +14,7 @@
 #include <QHBoxLayout>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPainter>
@@ -187,6 +188,9 @@ MainWindow::MainWindow(QWidget *parent)
             setControlsVisible(false);
         }
     });
+    // The magnet field is first in tab order; give the video initial focus so
+    // shortcuts work without clicking first.
+    m_player->setFocus();
     m_player->setMouseTracking(true);
     m_player->installEventFilter(this);
     m_topPanel->installEventFilter(this);
@@ -200,6 +204,89 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         showControls();
     }
     return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    // Only keys the focused widget ignored reach here, so typing in the magnet
+    // field is never intercepted.
+    switch (event->key()) {
+    case Qt::Key_Space:
+    case Qt::Key_K:
+        togglePlayback();
+        break;
+    case Qt::Key_Left:
+        seekBy(-5.0);
+        break;
+    case Qt::Key_Right:
+        seekBy(5.0);
+        break;
+    case Qt::Key_J:
+        seekBy(-10.0);
+        break;
+    case Qt::Key_L:
+        seekBy(10.0);
+        break;
+    case Qt::Key_Up:
+        adjustVolume(5);
+        break;
+    case Qt::Key_Down:
+        adjustVolume(-5);
+        break;
+    case Qt::Key_M:
+        toggleMute();
+        break;
+    case Qt::Key_F:
+        toggleFullscreen();
+        break;
+    case Qt::Key_Escape:
+        if (!isFullScreen()) {
+            QMainWindow::keyPressEvent(event);
+            return;
+        }
+        showNormal();
+        break;
+    default:
+        QMainWindow::keyPressEvent(event);
+        return;
+    }
+
+    showControls();
+    event->accept();
+}
+
+void MainWindow::seekBy(double seconds)
+{
+    if (m_duration <= 0.0) {
+        return;
+    }
+    const double target = qBound(0.0, m_position + seconds, m_duration);
+    m_player->seekTo(target);
+    statusBar()->showMessage(
+        QStringLiteral("%1%2s · %3")
+            .arg(seconds > 0.0 ? QStringLiteral("+") : QString())
+            .arg(seconds, 0, 'f', 0)
+            .arg(formatTime(target)),
+        2000
+    );
+}
+
+void MainWindow::adjustVolume(int delta)
+{
+    // Drives the existing slider connection, so the UI stays in sync.
+    const int volume = qBound(0, m_volumeSlider->value() + delta, 100);
+    m_volumeSlider->setValue(volume);
+    statusBar()->showMessage(QStringLiteral("Volume %1%").arg(volume), 2000);
+}
+
+void MainWindow::toggleMute()
+{
+    m_muted = !m_muted;
+    m_player->setMuted(m_muted);
+    statusBar()->showMessage(
+        m_muted ? QStringLiteral("Muted") : QStringLiteral("Unmuted"),
+        2000
+    );
 }
 
 void MainWindow::showControls()
@@ -273,7 +360,8 @@ void MainWindow::setContentFit(const QString &mode)
 
 void MainWindow::loadMagnet()
 {
-    m_magnetInput->clearFocus();
+    // Hand focus to the video so shortcuts work straight after clicking Load.
+    m_player->setFocus();
     m_videoFiles->clear();
     m_videoFiles->setEnabled(false);
     m_streamButton->setEnabled(false);
@@ -282,6 +370,7 @@ void MainWindow::loadMagnet()
 
 void MainWindow::startTorrentPlayback()
 {
+    m_player->setFocus();
     const int fileIndex = m_videoFiles->currentData().toInt();
     m_torrentSession->selectFile(fileIndex);
 }
@@ -546,11 +635,11 @@ void MainWindow::buildInterface()
     m_playButton->setFixedWidth(46);
     m_playButton->setToolTip(QStringLiteral("Pause"));
 
-    auto *volume = new QSlider(Qt::Horizontal, container);
-    volume->setRange(0, 100);
-    volume->setValue(100);
-    volume->setMaximumWidth(110);
-    volume->setToolTip(QStringLiteral("Volume"));
+    m_volumeSlider = new QSlider(Qt::Horizontal, container);
+    m_volumeSlider->setRange(0, 100);
+    m_volumeSlider->setValue(100);
+    m_volumeSlider->setMaximumWidth(110);
+    m_volumeSlider->setToolTip(QStringLiteral("Volume"));
 
     m_audioTracks = new QComboBox(container);
     m_audioTracks->setMinimumWidth(135);
@@ -583,7 +672,7 @@ void MainWindow::buildInterface()
 
     controls->addWidget(m_playButton);
     controls->addWidget(new QLabel(QStringLiteral("Volume"), container));
-    controls->addWidget(volume);
+    controls->addWidget(m_volumeSlider);
     controls->addStretch(1);
     controls->addWidget(m_audioTracks);
     controls->addWidget(m_subtitleTracks);
@@ -611,7 +700,7 @@ void MainWindow::buildInterface()
     connect(m_playButton, &QPushButton::clicked, this, &MainWindow::togglePlayback);
     connect(addSubtitle, &QPushButton::clicked, this, &MainWindow::chooseSubtitleFile);
     connect(fullscreen, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
-    connect(volume, &QSlider::valueChanged, m_player, &MpvVideoWidget::setVolume);
+    connect(m_volumeSlider, &QSlider::valueChanged, m_player, &MpvVideoWidget::setVolume);
     connect(m_seekSlider, &QSlider::sliderReleased, this, [this] {
         if (m_duration > 0.0) {
             m_player->seekTo(

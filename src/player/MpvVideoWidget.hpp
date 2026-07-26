@@ -10,9 +10,21 @@
 
 struct mpv_event;
 struct mpv_handle;
+struct mpv_node;
 struct mpv_render_context;
 struct mpv_stream_cb_info;
 class TorrentContent;
+
+// A span of the timeline mpv has cached and can play without waiting.
+struct MpvBufferedRange
+{
+    double start = 0.0;
+    double end = 0.0;
+
+    // mpv republishes the cache state constantly; the seek bar compares against
+    // what it already drew so an unchanged report costs no repaint.
+    bool operator==(const MpvBufferedRange &) const = default;
+};
 
 struct MpvTrack
 {
@@ -56,6 +68,7 @@ signals:
     void durationChanged(double seconds);
     void pauseChanged(bool paused);
     void tracksChanged(const QList<MpvTrack> &tracks);
+    void bufferedRangesChanged(const QList<MpvBufferedRange> &ranges);
     void toggleFullscreenRequested();
 
 protected:
@@ -90,6 +103,7 @@ private:
     void loadCurrentFile();
     void processEvent(const mpv_event &event);
     void refreshTracks();
+    void refreshBufferedRanges(const mpv_node *state);
     void reportMpvError(const QString &operation, int errorCode);
 
     mpv_handle *m_mpv = nullptr;

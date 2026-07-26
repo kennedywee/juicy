@@ -21,7 +21,7 @@ extern "C" {
 
 namespace {
 
-constexpr std::array<const char *, 8> kMpvOptions {
+constexpr std::array<const char *, 9> kMpvOptions {
     "terminal=no",
     "msg-level=all=warn",
     "vo=libmpv",
@@ -30,6 +30,9 @@ constexpr std::array<const char *, 8> kMpvOptions {
     "osc=no",
     "background=color",
     "background-color=#FF000000",
+    // cache=auto leaves the cache off for the custom juicy:// protocol, so
+    // there is no read-ahead to report and nothing for the seek bar to draw.
+    "cache=yes",
 };
 
 const mpv_node *mapValue(const mpv_node &map, const char *key)
@@ -65,6 +68,22 @@ qint64 nodeInteger(const mpv_node *node)
 bool nodeFlag(const mpv_node *node)
 {
     return node != nullptr && node->format == MPV_FORMAT_FLAG && node->u.flag != 0;
+}
+
+// Cache range bounds arrive as doubles, but mpv reports a whole-second bound
+// as an integer node, so both formats have to be accepted.
+double nodeDouble(const mpv_node *node)
+{
+    if (node == nullptr) {
+        return 0.0;
+    }
+    if (node->format == MPV_FORMAT_DOUBLE) {
+        return node->u.double_;
+    }
+    if (node->format == MPV_FORMAT_INT64) {
+        return static_cast<double>(node->u.int64);
+    }
+    return 0.0;
 }
 
 } // namespace
@@ -434,6 +453,7 @@ bool MpvVideoWidget::initializeMpv()
     mpv_observe_property(m_mpv, 2, "duration", MPV_FORMAT_DOUBLE);
     mpv_observe_property(m_mpv, 3, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, 4, "track-list", MPV_FORMAT_NODE);
+    mpv_observe_property(m_mpv, 5, "demuxer-cache-state", MPV_FORMAT_NODE);
     mpv_set_wakeup_callback(m_mpv, &MpvVideoWidget::handleMpvWakeup, this);
     return true;
 }
@@ -536,6 +556,12 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
             emit pauseChanged(*static_cast<const int *>(property->data) != 0);
         } else if (name == "track-list") {
             refreshTracks();
+        } else if (name == "demuxer-cache-state") {
+            refreshBufferedRanges(
+                property->format == MPV_FORMAT_NODE
+                    ? static_cast<const mpv_node *>(property->data)
+                    : nullptr
+            );
         }
         break;
     }
@@ -585,6 +611,32 @@ void MpvVideoWidget::refreshTracks()
     }
     mpv_free_node_contents(&trackList);
     emit tracksChanged(tracks);
+}
+
+void MpvVideoWidget::refreshBufferedRanges(const mpv_node *state)
+{
+    const mpv_node *ranges = state != nullptr
+        ? mapValue(*state, "seekable-ranges")
+        : nullptr;
+    if (ranges == nullptr || ranges->format != MPV_FORMAT_NODE_ARRAY
+        || ranges->u.list == nullptr) {
+        emit bufferedRangesChanged({});
+        return;
+    }
+
+    QList<MpvBufferedRange> buffered;
+    buffered.reserve(ranges->u.list->num);
+    for (int index = 0; index < ranges->u.list->num; ++index) {
+        const mpv_node &entry = ranges->u.list->values[index];
+        const MpvBufferedRange range {
+            .start = nodeDouble(mapValue(entry, "start")),
+            .end = nodeDouble(mapValue(entry, "end")),
+        };
+        if (range.end > range.start) {
+            buffered.push_back(range);
+        }
+    }
+    emit bufferedRangesChanged(buffered);
 }
 
 void MpvVideoWidget::reportMpvError(const QString &operation, int errorCode)

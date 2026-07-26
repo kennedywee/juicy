@@ -25,7 +25,6 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
-#include <QProxyStyle>
 #include <QPushButton>
 #include <QScreen>
 #include <QSignalBlocker>
@@ -35,28 +34,6 @@
 #include <QWidget>
 
 namespace {
-
-// A click on the groove should jump to that spot rather than step one page.
-// Setting the value absolutely also starts a drag, so the slider's existing
-// sliderReleased handler performs the seek.
-class AbsoluteSeekStyle final : public QProxyStyle
-{
-public:
-    using QProxyStyle::QProxyStyle;
-
-    int styleHint(
-        StyleHint hint,
-        const QStyleOption *option,
-        const QWidget *widget,
-        QStyleHintReturn *returnData
-    ) const override
-    {
-        if (hint == SH_Slider_AbsoluteSetButtons) {
-            return Qt::LeftButton;
-        }
-        return QProxyStyle::styleHint(hint, option, widget, returnData);
-    }
-};
 
 // Icons are painted rather than taken from a font: glyph fallback pulled each
 // symbol from a different family, so they never shared a weight or size.
@@ -210,6 +187,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_player, &MpvVideoWidget::durationChanged, this, &MainWindow::updateDuration);
     connect(m_player, &MpvVideoWidget::pauseChanged, this, &MainWindow::updatePaused);
     connect(m_player, &MpvVideoWidget::tracksChanged, this, &MainWindow::updateTracks);
+    connect(
+        m_player,
+        &MpvVideoWidget::bufferedRangesChanged,
+        this,
+        [this](const QList<MpvBufferedRange> &ranges) {
+            m_seekSlider->setBuffered(ranges);
+        }
+    );
     connect(m_player, &MpvVideoWidget::fatalError, this, [this](const QString &message) {
         showToast(message);
         m_diagnostics->setError(message);
@@ -571,6 +556,7 @@ void MainWindow::updatePosition(double seconds)
 void MainWindow::updateDuration(double seconds)
 {
     m_duration = seconds;
+    m_seekSlider->setDuration(seconds);
     updateTimeLabel();
 }
 
@@ -839,11 +825,7 @@ void MainWindow::buildInterface()
     auto *settingsButton = barButton(settingsIcon(), QStringLiteral("Settings"));
     auto *fullscreen = barButton(fullscreenIcon(), QStringLiteral("Fullscreen"));
 
-    m_seekSlider = new QSlider(Qt::Horizontal, container);
-    m_seekSlider->setRange(0, 1000);
-    auto *seekStyle = new AbsoluteSeekStyle;
-    seekStyle->setParent(m_seekSlider);
-    m_seekSlider->setStyle(seekStyle);
+    m_seekSlider = new SeekSlider(container);
 
     m_timeLabel = new QLabel(QStringLiteral("0:00 / 0:00"), container);
     m_timeLabel->setAlignment(Qt::AlignCenter);

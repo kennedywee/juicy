@@ -50,6 +50,8 @@ add_executable(juicy
   src/app/DiagnosticsPanel.hpp
   src/app/MainWindow.cpp
   src/app/MainWindow.hpp
+  src/app/SeekSlider.cpp
+  src/app/SeekSlider.hpp
   src/player/MpvVideoWidget.cpp
   src/player/MpvVideoWidget.hpp
   src/torrent/TorrentSession.cpp

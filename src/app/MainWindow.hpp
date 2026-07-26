@@ -4,6 +4,7 @@
 #include <QMainWindow>
 
 #include "app/DiagnosticsPanel.hpp"
+#include "app/SeekSlider.hpp"
 #include "player/MpvVideoWidget.hpp"
 #include "torrent/TorrentSession.hpp"
 
@@ -84,7 +85,7 @@ private:
     QPushButton *m_streamButton = nullptr;
     QPushButton *m_playButton = nullptr;
     QPushButton *m_volumeButton = nullptr;
-    QSlider *m_seekSlider = nullptr;
+    SeekSlider *m_seekSlider = nullptr;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
     QLabel *m_toast = nullptr;

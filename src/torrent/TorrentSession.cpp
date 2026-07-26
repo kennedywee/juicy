@@ -101,7 +101,8 @@ struct TorrentSession::Impl
         const lt::file_storage &storage = information->layout();
         for (lt::file_index_t index{0}; index < storage.end_file(); ++index) {
             const QString path = QString::fromStdString(storage.file_path(index));
-            if (!storage.pad_file_at(index) && isVideoFile(path)) {
+            if (!storage.pad_file_at(index) && storage.file_size(index) > 0
+                && isVideoFile(path)) {
                 files.push_back(TorrentFile {
                     .index = static_cast<int>(index),
                     .name = QFileInfo(path).fileName(),
@@ -131,6 +132,8 @@ struct TorrentSession::Impl
     std::shared_ptr<TorrentContent> content;
     QList<TorrentFile> files;
     QString initializationError;
+    QString currentSavePath;
+    int torrentSequence = 0;
 };
 
 TorrentSession::TorrentSession(QObject *parent)
@@ -184,7 +187,15 @@ bool TorrentSession::addMagnet(const QString &magnet)
         m_impl->files.clear();
     }
 
-    parameters.save_path = m_impl->temporaryDirectory.path().toStdString();
+    ++m_impl->torrentSequence;
+    m_impl->currentSavePath = QDir(m_impl->temporaryDirectory.path()).filePath(
+        QStringLiteral("torrent-%1").arg(m_impl->torrentSequence)
+    );
+    if (!QDir().mkpath(m_impl->currentSavePath)) {
+        emit errorOccurred(QStringLiteral("Unable to create temporary torrent storage."));
+        return false;
+    }
+    parameters.save_path = m_impl->currentSavePath.toStdString();
     parameters.flags &= ~lt::torrent_flags::paused;
     parameters.flags |= lt::torrent_flags::auto_managed;
     m_impl->session->async_add_torrent(std::move(parameters));
@@ -228,7 +239,7 @@ bool TorrentSession::selectFile(int fileIndex)
         m_impl->handle,
         information,
         fileIndex,
-        m_impl->temporaryDirectory.path()
+        m_impl->currentSavePath
     );
     emit fileSelected(*match);
     emit streamReady(m_impl->content, *match);

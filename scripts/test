@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+deps_root="${project_dir}/.deps/root"
+ctest_bin="${deps_root}/usr/bin/ctest"
+
+"${project_dir}/scripts/build"
+
+if [[ ! -x "${ctest_bin}" ]]; then
+  ctest_bin="$(command -v ctest)"
+fi
+
+if [[ -d "${deps_root}/usr/lib" ]]; then
+  export LD_LIBRARY_PATH="${deps_root}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+exec "${ctest_bin}" --test-dir "${project_dir}/build" --output-on-failure
+

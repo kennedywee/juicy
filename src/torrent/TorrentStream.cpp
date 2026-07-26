@@ -102,6 +102,9 @@ void TorrentContent::prioritizeFrom(qint64 fileOffset)
 
     const qint64 torrentOffset = m_fileStart + qBound<qint64>(0, fileOffset, m_fileSize);
     const int firstPiece = static_cast<int>(torrentOffset / m_pieceLength);
+    if (m_priorityAnchor.exchange(firstPiece) == firstPiece) {
+        return;
+    }
     const qint64 lastByte = std::min(
         m_fileStart + m_fileSize - 1,
         torrentOffset + kReadAheadBytes

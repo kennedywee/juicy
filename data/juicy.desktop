@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Juicy
+Comment=Stream a torrent video with Anime4K
+Exec=juicy
+Icon=juicy
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=video;torrent;magnet;anime;Anime4K;
+StartupWMClass=juicy
+

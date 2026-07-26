@@ -1,6 +1,8 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDebug>
+#include <QFileInfo>
+#include <QIcon>
 #include <QSurfaceFormat>
 #include <QTimer>
 
@@ -19,8 +21,15 @@ int main(int argc, char *argv[])
 
     QApplication application(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Juicy"));
+    QApplication::setDesktopFileName(QStringLiteral("juicy"));
     QApplication::setOrganizationName(QStringLiteral("Juicy"));
     QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    const QString sourceIcon = QStringLiteral(JUICY_SOURCE_ICON);
+    if (QFileInfo::exists(sourceIcon)) {
+        QApplication::setWindowIcon(QIcon(sourceIcon));
+    } else {
+        QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("juicy")));
+    }
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Minimal Linux torrent video player"));

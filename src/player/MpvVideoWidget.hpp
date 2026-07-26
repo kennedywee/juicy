@@ -47,6 +47,7 @@ public:
 
 signals:
     void fatalError(const QString &message);
+    void playbackError(const QString &message);
     void fileLoaded();
     void positionChanged(double seconds);
     void durationChanged(double seconds);

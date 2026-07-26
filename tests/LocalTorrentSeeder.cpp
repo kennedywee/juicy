@@ -92,7 +92,10 @@ int main(int argc, char *argv[])
     settings.set_bool(lt::settings_pack::enable_lsd, false);
     settings.set_bool(lt::settings_pack::enable_upnp, false);
     settings.set_bool(lt::settings_pack::enable_natpmp, false);
-    settings.set_bool(lt::settings_pack::ignore_limits_on_local_network, false);
+    settings.set_bool(
+        lt::settings_pack::deprecated_ignore_limits_on_local_network,
+        false
+    );
     if (uploadKib > 0) {
         settings.set_int(lt::settings_pack::upload_rate_limit, uploadKib * 1024);
     }

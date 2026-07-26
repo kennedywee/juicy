@@ -30,6 +30,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_player, &MpvVideoWidget::durationChanged, this, &MainWindow::updateDuration);
     connect(m_player, &MpvVideoWidget::pauseChanged, this, &MainWindow::updatePaused);
     connect(m_player, &MpvVideoWidget::tracksChanged, this, &MainWindow::updateTracks);
+    connect(m_player, &MpvVideoWidget::fatalError, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 8000);
+    });
+    connect(m_player, &MpvVideoWidget::playbackError, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 8000);
+    });
     connect(
         m_player,
         &MpvVideoWidget::toggleFullscreenRequested,
@@ -122,19 +128,6 @@ void MainWindow::updateTorrentFiles(const QList<TorrentFile> &files)
     m_streamButton->setEnabled(hasFiles);
     if (hasFiles && m_autoStream) {
         startTorrentPlayback();
-    }
-}
-
-void MainWindow::chooseLocalFile()
-{
-    const QString path = QFileDialog::getOpenFileName(
-        this,
-        QStringLiteral("Open video"),
-        {},
-        QStringLiteral("Video files (*.mkv *.mp4 *.webm *.avi *.mov);;All files (*)")
-    );
-    if (!path.isEmpty()) {
-        openLocalFile(path);
     }
 }
 
@@ -362,7 +355,6 @@ void MainWindow::buildInterface()
     auto *controls = new QHBoxLayout;
     controls->setContentsMargins(12, 0, 12, 0);
 
-    auto *openButton = new QPushButton(QStringLiteral("Open file"), container);
     m_playButton = new QPushButton(container);
     m_playButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
     m_playButton->setToolTip(QStringLiteral("Pause"));
@@ -394,7 +386,6 @@ void MainWindow::buildInterface()
     fullscreen->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
     fullscreen->setToolTip(QStringLiteral("Fullscreen"));
 
-    controls->addWidget(openButton);
     controls->addWidget(m_playButton);
     controls->addWidget(new QLabel(QStringLiteral("Volume"), container));
     controls->addWidget(volume);
@@ -407,7 +398,6 @@ void MainWindow::buildInterface()
     layout->addLayout(controls);
     setCentralWidget(container);
 
-    connect(openButton, &QPushButton::clicked, this, &MainWindow::chooseLocalFile);
     connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadMagnet);
     connect(m_magnetInput, &QLineEdit::returnPressed, this, &MainWindow::loadMagnet);
     connect(m_streamButton, &QPushButton::clicked, this, &MainWindow::startTorrentPlayback);

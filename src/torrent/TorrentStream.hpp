@@ -53,6 +53,7 @@ private:
     std::mutex m_waitMutex;
     std::condition_variable m_pieceChanged;
     std::atomic_bool m_stopping = false;
+    std::atomic_int m_priorityAnchor = -1;
 };
 
 class TorrentFileStream final

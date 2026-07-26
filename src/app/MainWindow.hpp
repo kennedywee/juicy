@@ -28,7 +28,6 @@ private slots:
     void loadMagnet();
     void startTorrentPlayback();
     void updateTorrentFiles(const QList<TorrentFile> &files);
-    void chooseLocalFile();
     void chooseSubtitleFile();
     void togglePlayback();
     void toggleFullscreen();

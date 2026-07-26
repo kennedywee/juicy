@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+deps_root="${project_dir}/.deps/root"
+cmake_bin="${deps_root}/usr/bin/cmake"
+package_root="${project_dir}/build/package-root"
+archive="${project_dir}/build/juicy-linux-x86_64.tar.zst"
+
+if [[ ! -x "${cmake_bin}" ]]; then
+  cmake_bin="$(command -v cmake)"
+fi
+
+if [[ -d "${deps_root}/usr/lib" ]]; then
+  export LD_LIBRARY_PATH="${deps_root}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+"${project_dir}/scripts/build"
+"${cmake_bin}" -E rm -rf "${package_root}"
+DESTDIR="${package_root}" "${cmake_bin}" \
+  --install "${project_dir}/build" \
+  --prefix /usr
+tar --zstd -cf "${archive}" -C "${package_root}" .
+"${cmake_bin}" -E rm -rf "${package_root}"
+
+echo "${archive}"
+

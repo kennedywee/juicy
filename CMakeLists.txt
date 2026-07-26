@@ -7,6 +7,8 @@ project(
   LANGUAGES CXX
 )
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -55,6 +57,7 @@ target_include_directories(juicy PRIVATE src)
 
 target_compile_definitions(juicy PRIVATE
   JUICY_SOURCE_ANIME4K_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets/anime4k"
+  JUICY_SOURCE_ICON="${CMAKE_CURRENT_SOURCE_DIR}/data/icons/juicy.svg"
 )
 
 target_link_libraries(juicy PRIVATE
@@ -78,14 +81,24 @@ target_compile_options(juicy PRIVATE
   -Wsign-conversion
 )
 
-install(TARGETS juicy RUNTIME DESTINATION bin)
+install(TARGETS juicy RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(
   DIRECTORY assets/anime4k/
-  DESTINATION share/juicy/anime4k
+  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/juicy/anime4k"
+)
+install(
+  FILES data/juicy.desktop
+  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
+)
+install(
+  FILES data/icons/juicy.svg
+  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
 )
 
 include(CTest)
 if(BUILD_TESTING)
+  find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+
   add_executable(juicy-local-seeder tests/LocalTorrentSeeder.cpp)
   target_link_libraries(juicy-local-seeder PRIVATE Libtorrent::Rasterbar)
   target_compile_features(juicy-local-seeder PRIVATE cxx_std_20)
@@ -101,4 +114,30 @@ if(BUILD_TESTING)
       BUILD_RPATH "${JUICY_DEPS_ROOT}/usr/lib"
     )
   endif()
+
+  add_executable(juicy-torrent-session-test
+    tests/TorrentSessionTest.cpp
+    src/torrent/TorrentSession.cpp
+    src/torrent/TorrentSession.hpp
+    src/torrent/TorrentStream.cpp
+    src/torrent/TorrentStream.hpp
+  )
+  target_include_directories(juicy-torrent-session-test PRIVATE src)
+  target_link_libraries(juicy-torrent-session-test PRIVATE
+    Libtorrent::Rasterbar
+    Qt6::Test
+  )
+  target_compile_options(juicy-torrent-session-test PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wconversion
+    -Wsign-conversion
+  )
+  if(JUICY_DEPS_ROOT)
+    set_target_properties(juicy-torrent-session-test PROPERTIES
+      BUILD_RPATH "${JUICY_DEPS_ROOT}/usr/lib"
+    )
+  endif()
+  add_test(NAME torrent-session COMMAND juicy-torrent-session-test)
 endif()

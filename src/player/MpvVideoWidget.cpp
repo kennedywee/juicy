@@ -9,6 +9,7 @@
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QOpenGLContext>
+#include <QOpenGLFunctions>
 
 extern "C" {
 #include <mpv/client.h>
@@ -222,6 +223,10 @@ void MpvVideoWidget::paintGL()
         return;
     }
 
+    QOpenGLFunctions *functions = QOpenGLContext::currentContext()->functions();
+    while (functions->glGetError() != GL_NO_ERROR) {
+    }
+
     const qreal scale = devicePixelRatioF();
     mpv_opengl_fbo framebuffer {
         .fbo = static_cast<int>(defaultFramebufferObject()),
@@ -429,6 +434,16 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
         refreshTracks();
         emit fileLoaded();
         break;
+    case MPV_EVENT_END_FILE: {
+        const auto *end = static_cast<const mpv_event_end_file *>(event.data);
+        if (end != nullptr && end->reason == MPV_END_FILE_REASON_ERROR) {
+            emit playbackError(
+                QStringLiteral("Playback failed: %1")
+                    .arg(QString::fromUtf8(mpv_error_string(end->error)))
+            );
+        }
+        break;
+    }
     case MPV_EVENT_PROPERTY_CHANGE: {
         const auto *property = static_cast<const mpv_event_property *>(event.data);
         if (property == nullptr || property->name == nullptr) {

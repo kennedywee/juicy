@@ -18,6 +18,7 @@ public:
 
     MpvVideoWidget *player() const;
     void openLocalFile(const QString &path);
+    void setAnime4kProfile(const QString &profile);
 
 private slots:
     void chooseLocalFile();
@@ -28,10 +29,13 @@ private slots:
     void updateDuration(double seconds);
     void updatePaused(bool paused);
     void updateTracks(const QList<MpvTrack> &tracks);
+    void applyAnime4kProfile(int index);
 
 private:
     static QString formatTime(double seconds);
     static QString trackLabel(const MpvTrack &track);
+    static QString anime4kDirectory();
+    static QStringList anime4kShaderFiles(int profileIndex);
     void buildInterface();
     void updateTimeLabel();
 
@@ -46,4 +50,3 @@ private:
     double m_duration = 0.0;
     bool m_paused = false;
 };
-

@@ -3,13 +3,17 @@
 #include <cmath>
 
 #include <QComboBox>
+#include <QCoreApplication>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStyle>
+#include <QStatusBar>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -40,6 +44,18 @@ MpvVideoWidget *MainWindow::player() const
 void MainWindow::openLocalFile(const QString &path)
 {
     m_player->loadFile(path);
+}
+
+void MainWindow::setAnime4kProfile(const QString &profile)
+{
+    const int index = m_anime4kProfile->findData(profile.toLower());
+    if (index >= 0) {
+        if (m_anime4kProfile->currentIndex() == index) {
+            applyAnime4kProfile(index);
+        } else {
+            m_anime4kProfile->setCurrentIndex(index);
+        }
+    }
 }
 
 void MainWindow::chooseLocalFile()
@@ -129,6 +145,23 @@ void MainWindow::updateTracks(const QList<MpvTrack> &tracks)
     m_subtitleTracks->setEnabled(m_subtitleTracks->count() > 1);
 }
 
+void MainWindow::applyAnime4kProfile(int index)
+{
+    const QStringList shaderFiles = anime4kShaderFiles(index);
+    if (index > 0 && shaderFiles.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("Anime4K shaders are unavailable."), 5000);
+        m_anime4kProfile->setCurrentIndex(0);
+        m_player->setShaderFiles({});
+        return;
+    }
+
+    m_player->setShaderFiles(shaderFiles);
+    const QString label = index > 0
+        ? m_anime4kProfile->itemText(index)
+        : QStringLiteral("Anime4K disabled");
+    statusBar()->showMessage(label, 2500);
+}
+
 QString MainWindow::formatTime(double seconds)
 {
     const qint64 totalSeconds = static_cast<qint64>(std::max(0.0, seconds));
@@ -162,6 +195,63 @@ QString MainWindow::trackLabel(const MpvTrack &track)
         details.push_back(QStringLiteral("Track %1").arg(track.id));
     }
     return details.join(QStringLiteral(" · "));
+}
+
+QString MainWindow::anime4kDirectory()
+{
+    const QString installed = QDir(QCoreApplication::applicationDirPath())
+        .absoluteFilePath(QStringLiteral("../share/juicy/anime4k"));
+    if (QFileInfo::exists(QDir(installed).filePath(QStringLiteral("LICENSE")))) {
+        return QDir::cleanPath(installed);
+    }
+
+    const QString source = QStringLiteral(JUICY_SOURCE_ANIME4K_DIR);
+    if (QFileInfo::exists(QDir(source).filePath(QStringLiteral("LICENSE")))) {
+        return source;
+    }
+    return {};
+}
+
+QStringList MainWindow::anime4kShaderFiles(int profileIndex)
+{
+    if (profileIndex <= 0) {
+        return {};
+    }
+
+    const QString directory = anime4kDirectory();
+    if (directory.isEmpty()) {
+        return {};
+    }
+
+    QStringList names;
+    if (profileIndex == 1) {
+        names = {
+            QStringLiteral("Anime4K_Clamp_Highlights.glsl"),
+            QStringLiteral("Anime4K_Restore_CNN_S.glsl"),
+            QStringLiteral("Anime4K_Upscale_CNN_x2_S.glsl"),
+            QStringLiteral("Anime4K_Upscale_CNN_x2_S.glsl"),
+        };
+    } else {
+        names = {
+            QStringLiteral("Anime4K_Clamp_Highlights.glsl"),
+            QStringLiteral("Anime4K_Restore_CNN_L.glsl"),
+            QStringLiteral("Anime4K_Upscale_CNN_x2_L.glsl"),
+            QStringLiteral("Anime4K_Restore_CNN_S.glsl"),
+            QStringLiteral("Anime4K_Upscale_CNN_x2_S.glsl"),
+        };
+    }
+
+    QStringList paths;
+    paths.reserve(names.size());
+    const QDir shaderDirectory(directory);
+    for (const QString &name : names) {
+        const QString path = shaderDirectory.filePath(name);
+        if (!QFileInfo::exists(path)) {
+            return {};
+        }
+        paths.push_back(path);
+    }
+    return paths;
 }
 
 void MainWindow::buildInterface()
@@ -211,12 +301,10 @@ void MainWindow::buildInterface()
 
     auto *addSubtitle = new QPushButton(QStringLiteral("+ Subtitle"), container);
     m_anime4kProfile = new QComboBox(container);
-    m_anime4kProfile->addItems({
-        QStringLiteral("Anime4K off"),
-        QStringLiteral("Anime4K fast"),
-        QStringLiteral("Anime4K quality"),
-    });
-    m_anime4kProfile->setEnabled(false);
+    m_anime4kProfile->addItem(QStringLiteral("Anime4K off"), QStringLiteral("off"));
+    m_anime4kProfile->addItem(QStringLiteral("Anime4K fast"), QStringLiteral("fast"));
+    m_anime4kProfile->addItem(QStringLiteral("Anime4K quality"), QStringLiteral("quality"));
+    m_anime4kProfile->setEnabled(!anime4kDirectory().isEmpty());
 
     auto *fullscreen = new QPushButton(container);
     fullscreen->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
@@ -253,6 +341,12 @@ void MainWindow::buildInterface()
     connect(m_subtitleTracks, &QComboBox::currentIndexChanged, this, [this](int index) {
         m_player->selectSubtitleTrack(m_subtitleTracks->itemData(index).toLongLong());
     });
+    connect(
+        m_anime4kProfile,
+        &QComboBox::currentIndexChanged,
+        this,
+        &MainWindow::applyAnime4kProfile
+    );
 }
 
 void MainWindow::updateTimeLabel()
@@ -261,4 +355,3 @@ void MainWindow::updateTimeLabel()
         QStringLiteral("%1 / %2").arg(formatTime(m_position), formatTime(m_duration))
     );
 }
-

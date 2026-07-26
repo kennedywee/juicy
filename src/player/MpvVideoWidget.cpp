@@ -305,6 +305,7 @@ bool MpvVideoWidget::initializeMpv()
         return false;
     }
 
+    mpv_request_log_messages(m_mpv, "warn");
     mpv_observe_property(m_mpv, 1, "time-pos", MPV_FORMAT_DOUBLE);
     mpv_observe_property(m_mpv, 2, "duration", MPV_FORMAT_DOUBLE);
     mpv_observe_property(m_mpv, 3, "pause", MPV_FORMAT_FLAG);
@@ -354,11 +355,14 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
         }
 
         const QByteArray name(property->name);
-        if (name == "time-pos" && property->format == MPV_FORMAT_DOUBLE) {
+        if (name == "time-pos" && property->format == MPV_FORMAT_DOUBLE
+            && property->data != nullptr) {
             emit positionChanged(*static_cast<const double *>(property->data));
-        } else if (name == "duration" && property->format == MPV_FORMAT_DOUBLE) {
+        } else if (name == "duration" && property->format == MPV_FORMAT_DOUBLE
+                   && property->data != nullptr) {
             emit durationChanged(*static_cast<const double *>(property->data));
-        } else if (name == "pause" && property->format == MPV_FORMAT_FLAG) {
+        } else if (name == "pause" && property->format == MPV_FORMAT_FLAG
+                   && property->data != nullptr) {
             emit pauseChanged(*static_cast<const int *>(property->data) != 0);
         } else if (name == "track-list") {
             refreshTracks();

@@ -26,6 +26,10 @@ add_executable(juicy
 
 target_include_directories(juicy PRIVATE src)
 
+target_compile_definitions(juicy PRIVATE
+  JUICY_SOURCE_ANIME4K_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets/anime4k"
+)
+
 target_link_libraries(juicy PRIVATE
   PkgConfig::MPV
   Qt6::OpenGLWidgets
@@ -41,3 +45,7 @@ target_compile_options(juicy PRIVATE
 )
 
 install(TARGETS juicy RUNTIME DESTINATION bin)
+install(
+  DIRECTORY assets/anime4k/
+  DESTINATION share/juicy/anime4k
+)

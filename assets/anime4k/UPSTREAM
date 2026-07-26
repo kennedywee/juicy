@@ -1,0 +1,9 @@
+Project: Anime4K
+Repository: https://github.com/bloc97/Anime4K
+Revision: 7684e9586f8dcc738af08a1cdceb024cc184f426
+License: MIT
+
+Juicy includes only the shader variants needed by its Fast and Quality
+profiles. The Fast profile uses Mode A with the S variants. The Quality
+profile uses the L variants for its first restore/upscale pass and the S
+variants for its second pass.

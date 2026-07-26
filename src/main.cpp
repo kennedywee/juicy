@@ -26,10 +26,18 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(QStringLiteral("Minimal Linux torrent video player"));
     parser.addHelpOption();
     parser.addVersionOption();
+    QCommandLineOption anime4kOption(
+        QStringLiteral("anime4k"),
+        QStringLiteral("Start with the Anime4K profile: off, fast, or quality."),
+        QStringLiteral("profile"),
+        QStringLiteral("off")
+    );
+    parser.addOption(anime4kOption);
     parser.addPositionalArgument(QStringLiteral("video"), QStringLiteral("Local video used for player testing."));
     parser.process(application);
 
     MainWindow window;
+    window.setAnime4kProfile(parser.value(anime4kOption));
     QObject::connect(window.player(), &MpvVideoWidget::fatalError, [](const QString &message) {
         qCritical().noquote() << message;
     });

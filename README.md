@@ -27,3 +27,8 @@ scripts/build
 The helper scripts automatically use the repository-local dependency prefix
 under `.deps` when it exists.
 
+## Anime4K
+
+The bundled Anime4K GLSL shaders are pinned to upstream revision
+`7684e9586f8dcc738af08a1cdceb024cc184f426`. They are distributed under the
+MIT license included in `assets/anime4k/LICENSE`.

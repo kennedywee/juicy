@@ -287,7 +287,6 @@ bool TorrentSession::selectFile(int fileIndex)
         m_impl->currentSavePath
     );
     m_impl->pendingStream = *match;
-    m_impl->content->prepareForPlayback();
     emit fileSelected(*match);
     emit statusChanged(QStringLiteral("Preparing %1…").arg(match->name));
     m_impl->publishStreamWhenReady();
@@ -330,6 +329,12 @@ void TorrentSession::processAlerts()
                     QStringLiteral("Torrent error: %1")
                         .arg(QString::fromStdString(torrentError->error.message()))
                 );
+            }
+        } else if (const auto *priorities = lt::alert_cast<lt::file_prio_alert>(alert)) {
+            if (priorities->handle == m_impl->handle && m_impl->content
+                && m_impl->pendingStream) {
+                m_impl->content->prepareForPlayback();
+                m_impl->publishStreamWhenReady();
             }
         } else if (const auto *piece = lt::alert_cast<lt::piece_finished_alert>(alert)) {
             if (piece->handle == m_impl->handle && m_impl->content) {

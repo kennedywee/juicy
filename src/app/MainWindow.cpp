@@ -32,9 +32,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_player, &MpvVideoWidget::tracksChanged, this, &MainWindow::updateTracks);
     connect(m_player, &MpvVideoWidget::fatalError, this, [this](const QString &message) {
         statusBar()->showMessage(message, 8000);
+        m_playbackStatus->setText(QStringLiteral("Player error"));
     });
     connect(m_player, &MpvVideoWidget::playbackError, this, [this](const QString &message) {
         statusBar()->showMessage(message, 8000);
+        m_playbackStatus->setText(message);
+    });
+    connect(m_player, &MpvVideoWidget::fileLoaded, this, [this] {
+        m_playbackStatus->setText(QStringLiteral("Playing"));
     });
     connect(
         m_player,
@@ -61,6 +66,7 @@ MainWindow::MainWindow(QWidget *parent)
         [this](const std::shared_ptr<TorrentContent> &content, const TorrentFile &file) {
             m_player->setTorrentContent(content);
             m_player->loadFile(QStringLiteral("juicy://video"));
+            m_playbackStatus->setText(QStringLiteral("Opening video…"));
             statusBar()->showMessage(QStringLiteral("Buffering %1…").arg(file.name));
         }
     );
@@ -397,6 +403,8 @@ void MainWindow::buildInterface()
     controls->addWidget(fullscreen);
     layout->addLayout(controls);
     setCentralWidget(container);
+    m_playbackStatus = new QLabel(QStringLiteral("Idle"), this);
+    statusBar()->addPermanentWidget(m_playbackStatus);
 
     connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadMagnet);
     connect(m_magnetInput, &QLineEdit::returnPressed, this, &MainWindow::loadMagnet);

@@ -20,13 +20,15 @@ extern "C" {
 
 namespace {
 
-constexpr std::array<const char *, 6> kMpvOptions {
+constexpr std::array<const char *, 8> kMpvOptions {
     "terminal=no",
     "msg-level=all=warn",
     "vo=libmpv",
     "hwdec=auto-safe",
     "keep-open=yes",
     "osc=no",
+    "background=color",
+    "background-color=#FF000000",
 };
 
 const mpv_node *mapValue(const mpv_node &map, const char *key)

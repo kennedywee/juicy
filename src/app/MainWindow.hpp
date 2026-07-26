@@ -56,6 +56,7 @@ private:
     QComboBox *m_audioTracks = nullptr;
     QComboBox *m_subtitleTracks = nullptr;
     QComboBox *m_anime4kProfile = nullptr;
+    QLabel *m_playbackStatus = nullptr;
     double m_position = 0.0;
     double m_duration = 0.0;
     bool m_paused = false;

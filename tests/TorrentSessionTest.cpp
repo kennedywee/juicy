@@ -11,6 +11,7 @@ class TorrentSessionTest final : public QObject
 private slots:
     void rejectsInvalidMagnets();
     void acceptsWellFormedMagnets();
+    void reportsTorrentStats();
     void removesTemporaryStorage();
     void removesStaleTemporaryStorage();
 };
@@ -35,6 +36,26 @@ void TorrentSessionTest::acceptsWellFormedMagnets()
     );
 
     QVERIFY(session.addMagnet(magnet));
+}
+
+// The diagnostics panel lays these out as rows, so they have to arrive as
+// numbers rather than the formatted line statusChanged carries.
+void TorrentSessionTest::reportsTorrentStats()
+{
+    TorrentSession session;
+    qRegisterMetaType<TorrentStats>("TorrentStats");
+    QSignalSpy stats(&session, &TorrentSession::statsChanged);
+
+    QVERIFY(session.addMagnet(QStringLiteral(
+        "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+    )));
+
+    // The status timer ticks every 500ms; no peers are needed for a report.
+    QTRY_VERIFY_WITH_TIMEOUT(stats.count() > 0, 5000);
+    const auto reported = stats.constFirst().constFirst().value<TorrentStats>();
+    QCOMPARE(reported.downloadRate, 0);
+    QCOMPARE(reported.peers, 0);
+    QCOMPARE(reported.downloaded, 0);
 }
 
 void TorrentSessionTest::removesTemporaryStorage()

@@ -42,13 +42,6 @@ const QSet<QString> kVideoExtensions {
     QStringLiteral("ogm"),
 };
 
-QString humanRate(int bytesPerSecond)
-{
-    constexpr double bytesPerMebibyte = 1024.0 * 1024.0;
-    const double mebibytes = static_cast<double>(bytesPerSecond) / bytesPerMebibyte;
-    return QStringLiteral("%1 MiB/s").arg(mebibytes, 0, 'f', 1);
-}
-
 bool isVideoFile(const QString &path)
 {
     return kVideoExtensions.contains(QFileInfo(path).suffix().toLower());
@@ -357,10 +350,14 @@ void TorrentSession::updateStatus()
     const lt::torrent_status status = m_impl->handle.status(
         lt::torrent_handle::query_accurate_download_counters
     );
+    emit statsChanged(TorrentStats {
+        .downloadRate = status.download_rate,
+        .peers = status.num_peers,
+        .downloaded = status.total_done,
+    });
+
     if (!status.has_metadata) {
-        emit statusChanged(
-            QStringLiteral("Loading metadata · %1 peer(s)").arg(status.num_peers)
-        );
+        emit statusChanged(QStringLiteral("Loading metadata"));
         return;
     }
 
@@ -371,17 +368,11 @@ void TorrentSession::updateStatus()
         m_impl->selectedFileCompleteEmitted = true;
         emit selectedFileComplete(m_impl->content->filePath());
     }
-    emit statusChanged(
-        QStringLiteral("%1 · %2 peer(s) · %3 downloaded%4")
-            .arg(humanRate(status.download_rate))
-            .arg(status.num_peers)
-            .arg(QString::number(
-                static_cast<double>(status.total_done) / (1024.0 * 1024.0),
-                'f',
-                1
-            ) + QStringLiteral(" MiB"))
-            .arg(m_impl->pendingStream
-                     ? QStringLiteral(" · preparing playback")
-                     : QString())
-    );
+    // Only overwrite the phase text once a stream is actually flowing; the
+    // one-shot messages ("Starting X") stay on screen until then.
+    if (!m_impl->pendingStream && m_impl->content) {
+        emit statusChanged(QStringLiteral("Streaming"));
+    } else if (m_impl->pendingStream) {
+        emit statusChanged(QStringLiteral("Preparing playback"));
+    }
 }

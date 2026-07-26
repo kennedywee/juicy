@@ -17,6 +17,15 @@ struct TorrentFile
     qint64 size = 0;
 };
 
+// Reported as numbers rather than a formatted line so the diagnostics panel can
+// lay them out as rows.
+struct TorrentStats
+{
+    int downloadRate = 0;
+    int peers = 0;
+    qint64 downloaded = 0;
+};
+
 class TorrentSession final : public QObject
 {
     Q_OBJECT
@@ -35,6 +44,7 @@ public:
 signals:
     void filesReady(const QList<TorrentFile> &files);
     void statusChanged(const QString &status);
+    void statsChanged(const TorrentStats &stats);
     void errorOccurred(const QString &message);
     void fileSelected(const TorrentFile &file);
     void streamReady(

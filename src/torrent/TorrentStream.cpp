@@ -19,6 +19,7 @@ namespace {
 
 constexpr qint64 kReadAheadBytes = 32LL * 1024LL * 1024LL;
 constexpr int kMaximumDeadlineMs = 10'000;
+constexpr int kMaximumReadAheadPieces = 64;
 
 } // namespace
 
@@ -110,8 +111,11 @@ void TorrentContent::prioritizeFrom(qint64 fileOffset)
         torrentOffset + kReadAheadBytes
     );
     const int lastPiece = std::min(
-        m_numPieces - 1,
-        static_cast<int>(lastByte / m_pieceLength)
+        {
+            m_numPieces - 1,
+            static_cast<int>(lastByte / m_pieceLength),
+            firstPiece + kMaximumReadAheadPieces - 1,
+        }
     );
 
     m_handle.clear_piece_deadlines();

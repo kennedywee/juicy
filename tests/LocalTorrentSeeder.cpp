@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
     }
 
     int port = 16881;
-    if (argc == 3) {
+    if (argc >= 3) {
         port = std::stoi(argv[2]);
     }
     if (port <= 0 || port > 65535) {
@@ -92,14 +92,17 @@ int main(int argc, char *argv[])
     settings.set_bool(lt::settings_pack::enable_lsd, false);
     settings.set_bool(lt::settings_pack::enable_upnp, false);
     settings.set_bool(lt::settings_pack::enable_natpmp, false);
-    settings.set_bool(
-        lt::settings_pack::deprecated_ignore_limits_on_local_network,
-        false
-    );
     if (uploadKib > 0) {
         settings.set_int(lt::settings_pack::upload_rate_limit, uploadKib * 1024);
     }
     lt::session session(settings);
+    if (uploadKib > 0) {
+        lt::peer_class_info localClass = session.get_peer_class(
+            lt::session_handle::local_peer_class_id
+        );
+        localClass.upload_limit = uploadKib * 1024;
+        session.set_peer_class(lt::session_handle::local_peer_class_id, localClass);
+    }
 
     lt::add_torrent_params parameters;
     parameters.ti = information;

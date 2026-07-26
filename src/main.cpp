@@ -19,11 +19,11 @@ int main(int argc, char *argv[])
     surfaceFormat.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     QSurfaceFormat::setDefaultFormat(surfaceFormat);
 
-    QApplication application(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Juicy"));
-    QApplication::setDesktopFileName(QStringLiteral("juicy"));
     QApplication::setOrganizationName(QStringLiteral("Juicy"));
     QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+
+    QApplication application(argc, argv);
     const QString sourceIcon = QStringLiteral(JUICY_SOURCE_ICON);
     if (QFileInfo::exists(sourceIcon)) {
         QApplication::setWindowIcon(QIcon(sourceIcon));
@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
                 &MpvVideoWidget::fileLoaded,
                 &window,
                 [player = window.player(), seekSeconds] {
-                    QTimer::singleShot(500, player, [player, seekSeconds] {
+                    QTimer::singleShot(3000, player, [player, seekSeconds] {
                         player->seekTo(seekSeconds);
                     });
                 }

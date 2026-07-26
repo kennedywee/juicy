@@ -9,7 +9,9 @@
 #include <vector>
 
 #include <QDir>
+#include <QCoreApplication>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -51,12 +53,40 @@ bool isVideoFile(const QString &path)
     return kVideoExtensions.contains(QFileInfo(path).suffix().toLower());
 }
 
+QString temporaryDirectoryTemplate()
+{
+    QDir temporaryRoot(QDir::tempPath());
+    const QRegularExpression sessionPattern(
+        QStringLiteral("^juicy-player-(\\d+)-[A-Za-z0-9]{6}$")
+    );
+    const QStringList candidates = temporaryRoot.entryList(
+        {QStringLiteral("juicy-player-*-*")},
+        QDir::Dirs | QDir::NoDotAndDotDot
+    );
+    for (const QString &candidate : candidates) {
+        const QRegularExpressionMatch match = sessionPattern.match(candidate);
+        if (!match.hasMatch()) {
+            continue;
+        }
+
+        const QString processPath = QStringLiteral("/proc/%1").arg(match.captured(1));
+        if (!QFileInfo::exists(processPath)) {
+            QDir(temporaryRoot.filePath(candidate)).removeRecursively();
+        }
+    }
+
+    return temporaryRoot.filePath(
+        QStringLiteral("juicy-player-%1-XXXXXX")
+            .arg(QCoreApplication::applicationPid())
+    );
+}
+
 } // namespace
 
 struct TorrentSession::Impl
 {
     explicit Impl(TorrentSession *owner)
-        : temporaryDirectory(QDir::tempPath() + QStringLiteral("/juicy-XXXXXX"))
+        : temporaryDirectory(temporaryDirectoryTemplate())
         , q(owner)
     {
         if (!temporaryDirectory.isValid()) {

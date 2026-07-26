@@ -12,6 +12,7 @@ private slots:
     void rejectsInvalidMagnets();
     void acceptsWellFormedMagnets();
     void removesTemporaryStorage();
+    void removesStaleTemporaryStorage();
 };
 
 void TorrentSessionTest::rejectsInvalidMagnets()
@@ -47,7 +48,18 @@ void TorrentSessionTest::removesTemporaryStorage()
     QVERIFY(!QDir(path).exists());
 }
 
+void TorrentSessionTest::removesStaleTemporaryStorage()
+{
+    const QString stalePath = QDir(QDir::tempPath()).filePath(
+        QStringLiteral("juicy-player-999999-ABC123")
+    );
+    QVERIFY(QDir().mkpath(stalePath));
+    {
+        TorrentSession session;
+        QVERIFY(!QDir(stalePath).exists());
+    }
+}
+
 QTEST_GUILESS_MAIN(TorrentSessionTest)
 
 #include "TorrentSessionTest.moc"
-

@@ -43,6 +43,7 @@ public:
     void selectSubtitleTrack(qint64 id);
     void addSubtitleFile(const QString &path);
     void setShaderFiles(const QStringList &paths);
+    void setContentFit(const QString &mode);
     void setTorrentContent(const std::shared_ptr<TorrentContent> &content);
 
 signals:

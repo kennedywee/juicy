@@ -182,6 +182,29 @@ void MpvVideoWidget::setShaderFiles(const QStringList &paths)
     }
 }
 
+void MpvVideoWidget::setContentFit(const QString &mode)
+{
+    // mpv scales the video itself; these three properties cover every mode.
+    const bool stretch = mode == QStringLiteral("stretch");
+    const bool original = mode == QStringLiteral("original");
+    const bool cover = mode == QStringLiteral("cover");
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("keepaspect"),
+        stretch ? QStringLiteral("no") : QStringLiteral("yes"),
+    });
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("video-unscaled"),
+        original ? QStringLiteral("yes") : QStringLiteral("no"),
+    });
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("panscan"),
+        cover ? QStringLiteral("1.0") : QStringLiteral("0.0"),
+    });
+}
+
 void MpvVideoWidget::setTorrentContent(const std::shared_ptr<TorrentContent> &content)
 {
     std::scoped_lock lock(m_torrentContentMutex);

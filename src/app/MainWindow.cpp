@@ -175,6 +175,19 @@ void MainWindow::setAnime4kProfile(const QString &profile)
     }
 }
 
+void MainWindow::setContentFit(const QString &mode)
+{
+    const int index = m_contentFit->findData(mode.toLower());
+    if (index < 0) {
+        return;
+    }
+    if (m_contentFit->currentIndex() == index) {
+        m_player->setContentFit(mode.toLower());
+    } else {
+        m_contentFit->setCurrentIndex(index);
+    }
+}
+
 void MainWindow::loadMagnet()
 {
     m_magnetInput->clearFocus();
@@ -465,6 +478,13 @@ void MainWindow::buildInterface()
     m_subtitleTracks->setToolTip(QStringLiteral("Subtitle track"));
     m_subtitleTracks->setEnabled(false);
 
+    m_contentFit = new QComboBox(container);
+    m_contentFit->setToolTip(QStringLiteral("Content fit"));
+    m_contentFit->addItem(QStringLiteral("Fit"), QStringLiteral("fit"));
+    m_contentFit->addItem(QStringLiteral("Cover"), QStringLiteral("cover"));
+    m_contentFit->addItem(QStringLiteral("Stretch"), QStringLiteral("stretch"));
+    m_contentFit->addItem(QStringLiteral("Original"), QStringLiteral("original"));
+
     auto *addSubtitle = new QPushButton(QStringLiteral("+ Subtitle"), container);
     m_anime4kProfile = new QComboBox(container);
     m_anime4kProfile->addItem(QStringLiteral("Anime4K off"), QStringLiteral("off"));
@@ -483,6 +503,7 @@ void MainWindow::buildInterface()
     controls->addWidget(m_audioTracks);
     controls->addWidget(m_subtitleTracks);
     controls->addWidget(addSubtitle);
+    controls->addWidget(m_contentFit);
     controls->addWidget(m_anime4kProfile);
     controls->addWidget(fullscreen);
     bottomLayout->addLayout(controls);
@@ -518,6 +539,13 @@ void MainWindow::buildInterface()
     });
     connect(m_subtitleTracks, &QComboBox::currentIndexChanged, this, [this](int index) {
         m_player->selectSubtitleTrack(m_subtitleTracks->itemData(index).toLongLong());
+    });
+    connect(m_contentFit, &QComboBox::currentIndexChanged, this, [this](int index) {
+        m_player->setContentFit(m_contentFit->itemData(index).toString());
+        statusBar()->showMessage(
+            QStringLiteral("Content fit: %1").arg(m_contentFit->itemText(index)),
+            2500
+        );
     });
     connect(
         m_anime4kProfile,

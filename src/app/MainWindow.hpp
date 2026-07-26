@@ -24,6 +24,7 @@ public:
     void openMagnet(const QString &magnet);
     void setAutoStream(bool enabled);
     void setAnime4kProfile(const QString &profile);
+    void setContentFit(const QString &mode);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -63,6 +64,7 @@ private:
     QComboBox *m_audioTracks = nullptr;
     QComboBox *m_subtitleTracks = nullptr;
     QComboBox *m_anime4kProfile = nullptr;
+    QComboBox *m_contentFit = nullptr;
     QLabel *m_playbackStatus = nullptr;
     QWidget *m_topPanel = nullptr;
     QWidget *m_bottomPanel = nullptr;

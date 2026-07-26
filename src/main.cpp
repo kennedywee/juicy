@@ -114,6 +114,12 @@ int main(int argc, char *argv[])
         QStringLiteral("profile"),
         QStringLiteral("off")
     );
+    QCommandLineOption contentFitOption(
+        QStringLiteral("content-fit"),
+        QStringLiteral("Start with the content fit: fit, cover, stretch, or original."),
+        QStringLiteral("mode"),
+        QStringLiteral("fit")
+    );
     QCommandLineOption magnetOption(
         QStringLiteral("magnet"),
         QStringLiteral("Load a magnet link when the application starts."),
@@ -129,6 +135,7 @@ int main(int argc, char *argv[])
         QStringLiteral("seconds")
     );
     parser.addOption(anime4kOption);
+    parser.addOption(contentFitOption);
     parser.addOption(magnetOption);
     parser.addOption(autoStreamOption);
     parser.addOption(seekOption);
@@ -138,6 +145,7 @@ int main(int argc, char *argv[])
     MainWindow window;
     window.setAutoStream(parser.isSet(autoStreamOption));
     window.setAnime4kProfile(parser.value(anime4kOption));
+    window.setContentFit(parser.value(contentFitOption));
     QObject::connect(window.player(), &MpvVideoWidget::fatalError, [](const QString &message) {
         qCritical().noquote() << message;
     });

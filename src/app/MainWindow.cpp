@@ -12,9 +12,15 @@
 #include <QFileInfo>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QGuiApplication>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
 #include <QPushButton>
+#include <QScreen>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStyle>
@@ -22,6 +28,83 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+
+namespace {
+
+// Icons are painted rather than taken from a font: glyph fallback pulled each
+// symbol from a different family, so they never shared a weight or size.
+constexpr int kIconExtent = 14;
+
+QPainter beginIcon(QPixmap &pixmap)
+{
+    const qreal ratio = QGuiApplication::primaryScreen() != nullptr
+        ? QGuiApplication::primaryScreen()->devicePixelRatio()
+        : 1.0;
+    pixmap = QPixmap(QSize(kIconExtent, kIconExtent) * ratio);
+    pixmap.setDevicePixelRatio(ratio);
+    pixmap.fill(Qt::transparent);
+    return QPainter(&pixmap);
+}
+
+QColor iconColor()
+{
+    return QGuiApplication::palette().color(QPalette::ButtonText);
+}
+
+QIcon playIcon()
+{
+    QPixmap pixmap;
+    QPainter painter = beginIcon(pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(iconColor());
+    painter.drawPolygon(QPolygonF({{3.5, 2.0}, {12.0, 7.0}, {3.5, 12.0}}));
+    painter.end();
+    return QIcon(pixmap);
+}
+
+QIcon pauseIcon()
+{
+    QPixmap pixmap;
+    QPainter painter = beginIcon(pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(iconColor());
+    painter.drawRect(QRectF(3.5, 2.0, 3.0, 10.0));
+    painter.drawRect(QRectF(8.5, 2.0, 3.0, 10.0));
+    painter.end();
+    return QIcon(pixmap);
+}
+
+QIcon fullscreenIcon()
+{
+    QPixmap pixmap;
+    QPainter painter = beginIcon(pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(iconColor(), 1.6, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+    painter.setBrush(Qt::NoBrush);
+    constexpr qreal near = 1.8;
+    constexpr qreal far = kIconExtent - near;
+    constexpr qreal arm = 4.0;
+    QPainterPath corners;
+    corners.moveTo(near, near + arm);
+    corners.lineTo(near, near);
+    corners.lineTo(near + arm, near);
+    corners.moveTo(far - arm, near);
+    corners.lineTo(far, near);
+    corners.lineTo(far, near + arm);
+    corners.moveTo(near, far - arm);
+    corners.lineTo(near, far);
+    corners.lineTo(near + arm, far);
+    corners.moveTo(far - arm, far);
+    corners.lineTo(far, far);
+    corners.lineTo(far, far - arm);
+    painter.drawPath(corners);
+    painter.end();
+    return QIcon(pixmap);
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -270,7 +353,7 @@ void MainWindow::updatePaused(bool paused)
     if (paused) {
         showControls();
     }
-    m_playButton->setText(paused ? QStringLiteral("▶") : QStringLiteral("▮▮"));
+    m_playButton->setIcon(paused ? m_playIcon : m_pauseIcon);
     m_playButton->setToolTip(paused ? QStringLiteral("Play") : QStringLiteral("Pause"));
 }
 
@@ -456,9 +539,10 @@ void MainWindow::buildInterface()
     auto *controls = new QHBoxLayout;
     controls->setContentsMargins(12, 0, 12, 0);
 
-    // Text glyphs instead of QStyle standard icons: those are fixed dark
-    // pixmaps that stay invisible against the dark overlay.
-    m_playButton = new QPushButton(QStringLiteral("▮▮"), container);
+    m_playIcon = playIcon();
+    m_pauseIcon = pauseIcon();
+    m_playButton = new QPushButton(container);
+    m_playButton->setIcon(m_pauseIcon);
     m_playButton->setFixedWidth(46);
     m_playButton->setToolTip(QStringLiteral("Pause"));
 
@@ -492,7 +576,8 @@ void MainWindow::buildInterface()
     m_anime4kProfile->addItem(QStringLiteral("Anime4K quality"), QStringLiteral("quality"));
     m_anime4kProfile->setEnabled(!anime4kDirectory().isEmpty());
 
-    auto *fullscreen = new QPushButton(QStringLiteral("□"), container);
+    auto *fullscreen = new QPushButton(container);
+    fullscreen->setIcon(fullscreenIcon());
     fullscreen->setFixedWidth(46);
     fullscreen->setToolTip(QStringLiteral("Fullscreen"));
 

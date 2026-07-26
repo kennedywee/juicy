@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+#include <QProxyStyle>
 #include <QPushButton>
 #include <QScreen>
 #include <QSignalBlocker>
@@ -31,6 +32,28 @@
 #include <QWidget>
 
 namespace {
+
+// A click on the groove should jump to that spot rather than step one page.
+// Setting the value absolutely also starts a drag, so the slider's existing
+// sliderReleased handler performs the seek.
+class AbsoluteSeekStyle final : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+
+    int styleHint(
+        StyleHint hint,
+        const QStyleOption *option,
+        const QWidget *widget,
+        QStyleHintReturn *returnData
+    ) const override
+    {
+        if (hint == SH_Slider_AbsoluteSetButtons) {
+            return Qt::LeftButton;
+        }
+        return QProxyStyle::styleHint(hint, option, widget, returnData);
+    }
+};
 
 // Icons are painted rather than taken from a font: glyph fallback pulled each
 // symbol from a different family, so they never shared a weight or size.
@@ -619,6 +642,9 @@ void MainWindow::buildInterface()
     timeline->setContentsMargins(12, 0, 12, 0);
     m_seekSlider = new QSlider(Qt::Horizontal, container);
     m_seekSlider->setRange(0, 1000);
+    auto *seekStyle = new AbsoluteSeekStyle;
+    seekStyle->setParent(m_seekSlider);
+    m_seekSlider->setStyle(seekStyle);
     m_timeLabel = new QLabel(QStringLiteral("0:00 / 0:00"), container);
     m_timeLabel->setMinimumWidth(105);
     timeline->addWidget(m_seekSlider, 1);

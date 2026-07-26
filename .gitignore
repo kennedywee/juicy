@@ -1,0 +1,6 @@
+/.deps/
+/build/
+/build-*/
+/.cache/
+*.user
+

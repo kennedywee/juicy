@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+deps_root="${project_dir}/.deps/root"
+cmake_bin="${deps_root}/usr/bin/cmake"
+
+if [[ ! -x "${cmake_bin}" ]]; then
+  cmake_bin="$(command -v cmake)"
+fi
+
+if [[ -d "${deps_root}/usr/lib" ]]; then
+  export LD_LIBRARY_PATH="${deps_root}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+if [[ ! -f "${project_dir}/build/CMakeCache.txt" ]]; then
+  "${project_dir}/scripts/configure"
+fi
+
+exec "${cmake_bin}" --build "${project_dir}/build"
+

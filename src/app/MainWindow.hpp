@@ -77,6 +77,7 @@ private:
     QWidget *m_topPanel = nullptr;
     QWidget *m_bottomPanel = nullptr;
     QTimer *m_hideControlsTimer = nullptr;
+    QTimer *m_clickTimer = nullptr;
     QIcon m_playIcon;
     QIcon m_pauseIcon;
     double m_position = 0.0;

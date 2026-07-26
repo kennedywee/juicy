@@ -212,6 +212,10 @@ MainWindow::MainWindow(QWidget *parent)
             setControlsVisible(false);
         }
     });
+    m_clickTimer = new QTimer(this);
+    m_clickTimer->setSingleShot(true);
+    m_clickTimer->setInterval(QApplication::doubleClickInterval());
+    connect(m_clickTimer, &QTimer::timeout, this, &MainWindow::togglePlayback);
     // The magnet field is first in tab order; give the video initial focus so
     // shortcuts work without clicking first.
     m_player->setFocus();
@@ -224,12 +228,22 @@ MainWindow::MainWindow(QWidget *parent)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    // Right-clicking the video dismisses the overlay straight away.
-    if (watched == m_player && event->type() == QEvent::MouseButtonPress
-        && static_cast<QMouseEvent *>(event)->button() == Qt::RightButton) {
-        m_hideControlsTimer->stop();
-        setControlsVisible(false);
-        return true;
+    if (watched == m_player && event->type() == QEvent::MouseButtonPress) {
+        const auto button = static_cast<QMouseEvent *>(event)->button();
+        // Right-clicking the video dismisses the overlay straight away.
+        if (button == Qt::RightButton) {
+            m_hideControlsTimer->stop();
+            setControlsVisible(false);
+            return true;
+        }
+        // Hold the play/pause toggle until this is known not to be the first
+        // half of a double click, which toggles fullscreen instead.
+        if (button == Qt::LeftButton) {
+            m_clickTimer->start();
+        }
+    }
+    if (watched == m_player && event->type() == QEvent::MouseButtonDblClick) {
+        m_clickTimer->stop();
     }
     if (event->type() == QEvent::MouseMove || event->type() == QEvent::Enter) {
         showControls();

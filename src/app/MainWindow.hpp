@@ -21,6 +21,7 @@ public:
     MpvVideoWidget *player() const;
     void openLocalFile(const QString &path);
     void openMagnet(const QString &magnet);
+    void setAutoStream(bool enabled);
     void setAnime4kProfile(const QString &profile);
 
 private slots:
@@ -59,4 +60,5 @@ private:
     double m_position = 0.0;
     double m_duration = 0.0;
     bool m_paused = false;
+    bool m_autoStream = false;
 };

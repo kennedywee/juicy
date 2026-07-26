@@ -7,6 +7,7 @@
 #include <QString>
 
 class QTimer;
+class TorrentContent;
 
 struct TorrentFile
 {
@@ -36,6 +37,10 @@ signals:
     void statusChanged(const QString &status);
     void errorOccurred(const QString &message);
     void fileSelected(const TorrentFile &file);
+    void streamReady(
+        const std::shared_ptr<TorrentContent> &content,
+        const TorrentFile &file
+    );
 
 private slots:
     void processAlerts();
@@ -47,4 +52,3 @@ private:
     QTimer *m_alertTimer = nullptr;
     QTimer *m_statusTimer = nullptr;
 };
-

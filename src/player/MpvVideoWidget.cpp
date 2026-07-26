@@ -1,4 +1,5 @@
 #include "player/MpvVideoWidget.hpp"
+#include "torrent/TorrentStream.hpp"
 
 #include <array>
 #include <vector>
@@ -13,6 +14,7 @@ extern "C" {
 #include <mpv/client.h>
 #include <mpv/render.h>
 #include <mpv/render_gl.h>
+#include <mpv/stream_cb.h>
 }
 
 namespace {
@@ -86,6 +88,8 @@ MpvVideoWidget::~MpvVideoWidget()
         mpv_terminate_destroy(m_mpv);
         m_mpv = nullptr;
     }
+    std::scoped_lock lock(m_torrentContentMutex);
+    m_torrentContent.reset();
 }
 
 void MpvVideoWidget::loadFile(const QString &path)
@@ -168,6 +172,12 @@ void MpvVideoWidget::setShaderFiles(const QStringList &paths)
             path,
         });
     }
+}
+
+void MpvVideoWidget::setTorrentContent(const std::shared_ptr<TorrentContent> &content)
+{
+    std::scoped_lock lock(m_torrentContentMutex);
+    m_torrentContent = content;
 }
 
 void MpvVideoWidget::initializeGL()
@@ -279,6 +289,66 @@ void MpvVideoWidget::handleRenderUpdate(void *context)
     }, Qt::QueuedConnection);
 }
 
+int MpvVideoWidget::openTorrentStream(
+    void *context,
+    char *uri,
+    mpv_stream_cb_info *information
+)
+{
+    auto *widget = static_cast<MpvVideoWidget *>(context);
+    if (widget == nullptr || uri == nullptr || information == nullptr
+        || !QByteArray(uri).startsWith("juicy://")) {
+        return MPV_ERROR_LOADING_FAILED;
+    }
+
+    std::shared_ptr<TorrentContent> content;
+    {
+        std::scoped_lock lock(widget->m_torrentContentMutex);
+        content = widget->m_torrentContent;
+    }
+    if (!content) {
+        return MPV_ERROR_LOADING_FAILED;
+    }
+
+    std::unique_ptr<TorrentFileStream> stream = content->openStream();
+    information->cookie = stream.release();
+    information->read_fn = &MpvVideoWidget::readTorrentStream;
+    information->seek_fn = &MpvVideoWidget::seekTorrentStream;
+    information->size_fn = &MpvVideoWidget::sizeTorrentStream;
+    information->cancel_fn = &MpvVideoWidget::cancelTorrentStream;
+    information->close_fn = &MpvVideoWidget::closeTorrentStream;
+    return 0;
+}
+
+std::int64_t MpvVideoWidget::readTorrentStream(
+    void *stream,
+    char *buffer,
+    std::uint64_t byteCount
+)
+{
+    return static_cast<TorrentFileStream *>(stream)->read(buffer, byteCount);
+}
+
+std::int64_t MpvVideoWidget::seekTorrentStream(void *stream, std::int64_t offset)
+{
+    return static_cast<TorrentFileStream *>(stream)->seek(offset);
+}
+
+std::int64_t MpvVideoWidget::sizeTorrentStream(void *stream)
+{
+    return static_cast<TorrentFileStream *>(stream)->size();
+}
+
+void MpvVideoWidget::cancelTorrentStream(void *stream)
+{
+    static_cast<TorrentFileStream *>(stream)->cancel();
+}
+
+void MpvVideoWidget::closeTorrentStream(void *stream)
+{
+    delete static_cast<TorrentFileStream *>(stream);
+}
+
 bool MpvVideoWidget::initializeMpv()
 {
     m_mpv = mpv_create();
@@ -297,6 +367,17 @@ bool MpvVideoWidget::initializeMpv()
             reportMpvError(QStringLiteral("Setting mpv option %1").arg(QString::fromUtf8(name)), result);
             return false;
         }
+    }
+
+    const int streamResult = mpv_stream_cb_add_ro(
+        m_mpv,
+        "juicy",
+        this,
+        &MpvVideoWidget::openTorrentStream
+    );
+    if (streamResult < 0) {
+        reportMpvError(QStringLiteral("Registering the torrent stream"), streamResult);
+        return false;
     }
 
     const int result = mpv_initialize(m_mpv);

@@ -37,12 +37,24 @@ int main(int argc, char *argv[])
         QStringLiteral("Load a magnet link when the application starts."),
         QStringLiteral("uri")
     );
+    QCommandLineOption autoStreamOption(
+        QStringLiteral("auto-stream"),
+        QStringLiteral("Automatically stream the first video after metadata loads.")
+    );
+    QCommandLineOption seekOption(
+        QStringLiteral("seek-on-load"),
+        QStringLiteral("Seek to a timestamp after the video loads."),
+        QStringLiteral("seconds")
+    );
     parser.addOption(anime4kOption);
     parser.addOption(magnetOption);
+    parser.addOption(autoStreamOption);
+    parser.addOption(seekOption);
     parser.addPositionalArgument(QStringLiteral("video"), QStringLiteral("Local video used for player testing."));
     parser.process(application);
 
     MainWindow window;
+    window.setAutoStream(parser.isSet(autoStreamOption));
     window.setAnime4kProfile(parser.value(anime4kOption));
     QObject::connect(window.player(), &MpvVideoWidget::fatalError, [](const QString &message) {
         qCritical().noquote() << message;
@@ -50,6 +62,22 @@ int main(int argc, char *argv[])
     QObject::connect(window.player(), &MpvVideoWidget::fileLoaded, [] {
         qInfo() << "libmpv loaded the video";
     });
+    if (parser.isSet(seekOption)) {
+        bool validSeek = false;
+        const double seekSeconds = parser.value(seekOption).toDouble(&validSeek);
+        if (validSeek && seekSeconds >= 0.0) {
+            QObject::connect(
+                window.player(),
+                &MpvVideoWidget::fileLoaded,
+                &window,
+                [player = window.player(), seekSeconds] {
+                    QTimer::singleShot(500, player, [player, seekSeconds] {
+                        player->seekTo(seekSeconds);
+                    });
+                }
+            );
+        }
+    }
     window.show();
 
     if (parser.isSet(magnetOption)) {

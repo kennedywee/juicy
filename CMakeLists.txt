@@ -47,6 +47,8 @@ add_executable(juicy
   src/player/MpvVideoWidget.hpp
   src/torrent/TorrentSession.cpp
   src/torrent/TorrentSession.hpp
+  src/torrent/TorrentStream.cpp
+  src/torrent/TorrentStream.hpp
 )
 
 target_include_directories(juicy PRIVATE src)
@@ -81,3 +83,22 @@ install(
   DIRECTORY assets/anime4k/
   DESTINATION share/juicy/anime4k
 )
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(juicy-local-seeder tests/LocalTorrentSeeder.cpp)
+  target_link_libraries(juicy-local-seeder PRIVATE Libtorrent::Rasterbar)
+  target_compile_features(juicy-local-seeder PRIVATE cxx_std_20)
+  target_compile_options(juicy-local-seeder PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wconversion
+    -Wsign-conversion
+  )
+  if(JUICY_DEPS_ROOT)
+    set_target_properties(juicy-local-seeder PROPERTIES
+      BUILD_RPATH "${JUICY_DEPS_ROOT}/usr/lib"
+    )
+  endif()
+endif()

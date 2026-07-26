@@ -1,4 +1,5 @@
 #include "torrent/TorrentSession.hpp"
+#include "torrent/TorrentStream.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -127,6 +128,7 @@ struct TorrentSession::Impl
     TorrentSession *q = nullptr;
     std::unique_ptr<lt::session> session;
     lt::torrent_handle handle;
+    std::shared_ptr<TorrentContent> content;
     QList<TorrentFile> files;
     QString initializationError;
 };
@@ -147,7 +149,14 @@ TorrentSession::TorrentSession(QObject *parent)
     }
 }
 
-TorrentSession::~TorrentSession() = default;
+TorrentSession::~TorrentSession()
+{
+    if (m_impl->content) {
+        m_impl->content->stop();
+        m_impl->content.reset();
+    }
+    m_impl->session.reset();
+}
 
 bool TorrentSession::addMagnet(const QString &magnet)
 {
@@ -166,6 +175,10 @@ bool TorrentSession::addMagnet(const QString &magnet)
     }
 
     if (m_impl->handle.is_valid()) {
+        if (m_impl->content) {
+            m_impl->content->stop();
+            m_impl->content.reset();
+        }
         m_impl->session->remove_torrent(m_impl->handle);
         m_impl->handle = {};
         m_impl->files.clear();
@@ -211,7 +224,14 @@ bool TorrentSession::selectFile(int fileIndex)
         return false;
     }
 
+    m_impl->content = std::make_shared<TorrentContent>(
+        m_impl->handle,
+        information,
+        fileIndex,
+        m_impl->temporaryDirectory.path()
+    );
     emit fileSelected(*match);
+    emit streamReady(m_impl->content, *match);
     emit statusChanged(QStringLiteral("Selected %1").arg(match->name));
     return true;
 }
@@ -252,6 +272,10 @@ void TorrentSession::processAlerts()
                     QStringLiteral("Torrent error: %1")
                         .arg(QString::fromStdString(torrentError->error.message()))
                 );
+            }
+        } else if (const auto *piece = lt::alert_cast<lt::piece_finished_alert>(alert)) {
+            if (piece->handle == m_impl->handle && m_impl->content) {
+                m_impl->content->notifyPieceAvailable();
             }
         }
     }

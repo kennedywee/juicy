@@ -48,6 +48,16 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_torrentSession, &TorrentSession::errorOccurred, this, [this](const QString &message) {
         statusBar()->showMessage(message, 8000);
     });
+    connect(
+        m_torrentSession,
+        &TorrentSession::streamReady,
+        this,
+        [this](const std::shared_ptr<TorrentContent> &content, const TorrentFile &file) {
+            m_player->setTorrentContent(content);
+            m_player->loadFile(QStringLiteral("juicy://video"));
+            statusBar()->showMessage(QStringLiteral("Buffering %1…").arg(file.name));
+        }
+    );
 }
 
 MpvVideoWidget *MainWindow::player() const
@@ -64,6 +74,11 @@ void MainWindow::openMagnet(const QString &magnet)
 {
     m_magnetInput->setText(magnet);
     loadMagnet();
+}
+
+void MainWindow::setAutoStream(bool enabled)
+{
+    m_autoStream = enabled;
 }
 
 void MainWindow::setAnime4kProfile(const QString &profile)
@@ -105,6 +120,9 @@ void MainWindow::updateTorrentFiles(const QList<TorrentFile> &files)
     const bool hasFiles = !files.isEmpty();
     m_videoFiles->setEnabled(hasFiles);
     m_streamButton->setEnabled(hasFiles);
+    if (hasFiles && m_autoStream) {
+        startTorrentPlayback();
+    }
 }
 
 void MainWindow::chooseLocalFile()

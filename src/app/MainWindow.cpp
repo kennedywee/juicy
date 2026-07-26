@@ -143,11 +143,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_player, &MpvVideoWidget::pauseChanged, this, &MainWindow::updatePaused);
     connect(m_player, &MpvVideoWidget::tracksChanged, this, &MainWindow::updateTracks);
     connect(m_player, &MpvVideoWidget::fatalError, this, [this](const QString &message) {
-        statusBar()->showMessage(message, 8000);
+        m_statusBar->showMessage(message, 8000);
         m_playbackStatus->setText(QStringLiteral("Player error"));
     });
     connect(m_player, &MpvVideoWidget::playbackError, this, [this](const QString &message) {
-        statusBar()->showMessage(message, 8000);
+        m_statusBar->showMessage(message, 8000);
         m_playbackStatus->setText(message);
     });
     connect(m_player, &MpvVideoWidget::playbackRetrying, this, [this](int attempt) {
@@ -172,10 +172,10 @@ MainWindow::MainWindow(QWidget *parent)
         &MainWindow::updateTorrentFiles
     );
     connect(m_torrentSession, &TorrentSession::statusChanged, this, [this](const QString &status) {
-        statusBar()->showMessage(status);
+        m_statusBar->showMessage(status);
     });
     connect(m_torrentSession, &TorrentSession::errorOccurred, this, [this](const QString &message) {
-        statusBar()->showMessage(message, 8000);
+        m_statusBar->showMessage(message, 8000);
     });
     connect(
         m_torrentSession,
@@ -186,7 +186,7 @@ MainWindow::MainWindow(QWidget *parent)
             m_player->setTorrentContent(content);
             m_player->loadFile(QStringLiteral("juicy://video"));
             m_playbackStatus->setText(QStringLiteral("Opening video…"));
-            statusBar()->showMessage(QStringLiteral("Buffering %1…").arg(file.name));
+            m_statusBar->showMessage(QStringLiteral("Buffering %1…").arg(file.name));
         }
     );
     connect(
@@ -285,7 +285,7 @@ void MainWindow::seekBy(double seconds)
     }
     const double target = qBound(0.0, m_position + seconds, m_duration);
     m_player->seekTo(target);
-    statusBar()->showMessage(
+    m_statusBar->showMessage(
         QStringLiteral("%1%2s · %3")
             .arg(seconds > 0.0 ? QStringLiteral("+") : QString())
             .arg(seconds, 0, 'f', 0)
@@ -299,14 +299,14 @@ void MainWindow::adjustVolume(int delta)
     // Drives the existing slider connection, so the UI stays in sync.
     const int volume = qBound(0, m_volumeSlider->value() + delta, 100);
     m_volumeSlider->setValue(volume);
-    statusBar()->showMessage(QStringLiteral("Volume %1%").arg(volume), 2000);
+    m_statusBar->showMessage(QStringLiteral("Volume %1%").arg(volume), 2000);
 }
 
 void MainWindow::toggleMute()
 {
     m_muted = !m_muted;
     m_player->setMuted(m_muted);
-    statusBar()->showMessage(
+    m_statusBar->showMessage(
         m_muted ? QStringLiteral("Muted") : QStringLiteral("Unmuted"),
         2000
     );
@@ -321,8 +321,8 @@ void MainWindow::showControls()
 void MainWindow::setControlsVisible(bool visible)
 {
     m_topPanel->setVisible(visible);
+    // The status bar is a child of the bottom panel and hides along with it.
     m_bottomPanel->setVisible(visible);
-    statusBar()->setVisible(visible);
     m_player->setCursor(visible ? Qt::ArrowCursor : Qt::BlankCursor);
 }
 
@@ -495,7 +495,7 @@ void MainWindow::applyAnime4kProfile(int index)
 {
     const QStringList shaderFiles = anime4kShaderFiles(index);
     if (index > 0 && shaderFiles.isEmpty()) {
-        statusBar()->showMessage(QStringLiteral("Anime4K shaders are unavailable."), 5000);
+        m_statusBar->showMessage(QStringLiteral("Anime4K shaders are unavailable."), 5000);
         m_anime4kProfile->setCurrentIndex(0);
         m_player->setShaderFiles({});
         return;
@@ -505,7 +505,7 @@ void MainWindow::applyAnime4kProfile(int index)
     const QString label = index > 0
         ? m_anime4kProfile->itemText(index)
         : QStringLiteral("Anime4K disabled");
-    statusBar()->showMessage(label, 2500);
+    m_statusBar->showMessage(label, 2500);
 }
 
 QString MainWindow::formatTime(double seconds)
@@ -635,7 +635,7 @@ void MainWindow::buildInterface()
     m_bottomPanel->setObjectName(QStringLiteral("overlayPanel"));
     m_bottomPanel->setAttribute(Qt::WA_StyledBackground, true);
     auto *bottomLayout = new QVBoxLayout(m_bottomPanel);
-    bottomLayout->setContentsMargins(0, 6, 0, 8);
+    bottomLayout->setContentsMargins(0, 6, 0, 0);
     bottomLayout->setSpacing(6);
 
     auto *timeline = new QHBoxLayout;
@@ -707,18 +707,26 @@ void MainWindow::buildInterface()
     controls->addWidget(m_anime4kProfile);
     controls->addWidget(fullscreen);
     bottomLayout->addLayout(controls);
+
+    // Lives inside the overlay rather than QMainWindow's own status bar, which
+    // sat below the central widget and resized the video whenever it hid.
+    m_statusBar = new QStatusBar(m_bottomPanel);
+    m_statusBar->setObjectName(QStringLiteral("overlayStatus"));
+    m_statusBar->setSizeGripEnabled(false);
+    bottomLayout->addWidget(m_statusBar);
     layout->addWidget(m_bottomPanel, 0, 0, Qt::AlignBottom);
 
     const QString overlayStyle = QStringLiteral(
         "#overlayPanel { background-color: rgba(40, 35, 32, 215); }"
+        "#overlayStatus { background-color: #282320; }"
     );
     m_topPanel->setStyleSheet(overlayStyle);
     m_bottomPanel->setStyleSheet(overlayStyle);
     m_topPanel->raise();
     m_bottomPanel->raise();
     setCentralWidget(container);
-    m_playbackStatus = new QLabel(QStringLiteral("Idle"), this);
-    statusBar()->addPermanentWidget(m_playbackStatus);
+    m_playbackStatus = new QLabel(QStringLiteral("Idle"), m_statusBar);
+    m_statusBar->addPermanentWidget(m_playbackStatus);
 
     connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadMagnet);
     connect(m_magnetInput, &QLineEdit::returnPressed, this, &MainWindow::loadMagnet);
@@ -742,7 +750,7 @@ void MainWindow::buildInterface()
     });
     connect(m_contentFit, &QComboBox::currentIndexChanged, this, [this](int index) {
         m_player->setContentFit(m_contentFit->itemData(index).toString());
-        statusBar()->showMessage(
+        m_statusBar->showMessage(
             QStringLiteral("Content fit: %1").arg(m_contentFit->itemText(index)),
             2500
         );

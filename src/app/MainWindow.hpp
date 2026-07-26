@@ -11,6 +11,7 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSlider;
+class QStatusBar;
 class QTimer;
 
 class MainWindow final : public QMainWindow
@@ -72,6 +73,7 @@ private:
     QComboBox *m_anime4kProfile = nullptr;
     QComboBox *m_contentFit = nullptr;
     QLabel *m_playbackStatus = nullptr;
+    QStatusBar *m_statusBar = nullptr;
     QWidget *m_topPanel = nullptr;
     QWidget *m_bottomPanel = nullptr;
     QTimer *m_hideControlsTimer = nullptr;

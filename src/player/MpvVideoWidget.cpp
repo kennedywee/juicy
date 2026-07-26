@@ -6,8 +6,8 @@
 #include <QByteArray>
 #include <QDebug>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QOpenGLContext>
-#include <QThread>
 
 extern "C" {
 #include <mpv/client.h>
@@ -25,6 +25,41 @@ constexpr std::array<const char *, 6> kMpvOptions {
     "keep-open=yes",
     "osc=no",
 };
+
+const mpv_node *mapValue(const mpv_node &map, const char *key)
+{
+    if (map.format != MPV_FORMAT_NODE_MAP || map.u.list == nullptr) {
+        return nullptr;
+    }
+
+    for (int index = 0; index < map.u.list->num; ++index) {
+        if (qstrcmp(map.u.list->keys[index], key) == 0) {
+            return &map.u.list->values[index];
+        }
+    }
+    return nullptr;
+}
+
+QString nodeString(const mpv_node *node)
+{
+    if (node == nullptr || node->format != MPV_FORMAT_STRING || node->u.string == nullptr) {
+        return {};
+    }
+    return QString::fromUtf8(node->u.string);
+}
+
+qint64 nodeInteger(const mpv_node *node)
+{
+    if (node == nullptr || node->format != MPV_FORMAT_INT64) {
+        return 0;
+    }
+    return node->u.int64;
+}
+
+bool nodeFlag(const mpv_node *node)
+{
+    return node != nullptr && node->format == MPV_FORMAT_FLAG && node->u.flag != 0;
+}
 
 } // namespace
 
@@ -61,6 +96,78 @@ void MpvVideoWidget::loadFile(const QString &path)
     }
 
     issueCommand({QStringLiteral("loadfile"), path, QStringLiteral("replace")});
+}
+
+void MpvVideoWidget::setPaused(bool paused)
+{
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("pause"),
+        paused ? QStringLiteral("yes") : QStringLiteral("no"),
+    });
+}
+
+void MpvVideoWidget::seekTo(double seconds)
+{
+    issueCommand({
+        QStringLiteral("seek"),
+        QString::number(seconds, 'f', 3),
+        QStringLiteral("absolute+exact"),
+    });
+}
+
+void MpvVideoWidget::setVolume(int percent)
+{
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("volume"),
+        QString::number(qBound(0, percent, 100)),
+    });
+}
+
+void MpvVideoWidget::selectAudioTrack(qint64 id)
+{
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("aid"),
+        id > 0 ? QString::number(id) : QStringLiteral("auto"),
+    });
+}
+
+void MpvVideoWidget::selectSubtitleTrack(qint64 id)
+{
+    issueCommand({
+        QStringLiteral("set"),
+        QStringLiteral("sid"),
+        id > 0 ? QString::number(id) : QStringLiteral("no"),
+    });
+}
+
+void MpvVideoWidget::addSubtitleFile(const QString &path)
+{
+    issueCommand({
+        QStringLiteral("sub-add"),
+        path,
+        QStringLiteral("select"),
+    });
+}
+
+void MpvVideoWidget::setShaderFiles(const QStringList &paths)
+{
+    issueCommand({
+        QStringLiteral("change-list"),
+        QStringLiteral("glsl-shaders"),
+        QStringLiteral("clr"),
+        QString(),
+    });
+    for (const QString &path : paths) {
+        issueCommand({
+            QStringLiteral("change-list"),
+            QStringLiteral("glsl-shaders"),
+            QStringLiteral("append"),
+            path,
+        });
+    }
 }
 
 void MpvVideoWidget::initializeGL()
@@ -120,6 +227,16 @@ void MpvVideoWidget::paintGL()
     };
 
     mpv_render_context_render(m_renderContext, parameters);
+}
+
+void MpvVideoWidget::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        emit toggleFullscreenRequested();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mouseDoubleClickEvent(event);
 }
 
 void MpvVideoWidget::drainEvents()
@@ -188,6 +305,10 @@ bool MpvVideoWidget::initializeMpv()
         return false;
     }
 
+    mpv_observe_property(m_mpv, 1, "time-pos", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m_mpv, 2, "duration", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m_mpv, 3, "pause", MPV_FORMAT_FLAG);
+    mpv_observe_property(m_mpv, 4, "track-list", MPV_FORMAT_NODE);
     mpv_set_wakeup_callback(m_mpv, &MpvVideoWidget::handleMpvWakeup, this);
     return true;
 }
@@ -223,8 +344,27 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
 {
     switch (event.event_id) {
     case MPV_EVENT_FILE_LOADED:
+        refreshTracks();
         emit fileLoaded();
         break;
+    case MPV_EVENT_PROPERTY_CHANGE: {
+        const auto *property = static_cast<const mpv_event_property *>(event.data);
+        if (property == nullptr || property->name == nullptr) {
+            break;
+        }
+
+        const QByteArray name(property->name);
+        if (name == "time-pos" && property->format == MPV_FORMAT_DOUBLE) {
+            emit positionChanged(*static_cast<const double *>(property->data));
+        } else if (name == "duration" && property->format == MPV_FORMAT_DOUBLE) {
+            emit durationChanged(*static_cast<const double *>(property->data));
+        } else if (name == "pause" && property->format == MPV_FORMAT_FLAG) {
+            emit pauseChanged(*static_cast<const int *>(property->data) != 0);
+        } else if (name == "track-list") {
+            refreshTracks();
+        }
+        break;
+    }
     case MPV_EVENT_LOG_MESSAGE: {
         const auto *message = static_cast<const mpv_event_log_message *>(event.data);
         if (message != nullptr) {
@@ -238,6 +378,41 @@ void MpvVideoWidget::processEvent(const mpv_event &event)
     }
 }
 
+void MpvVideoWidget::refreshTracks()
+{
+    if (m_mpv == nullptr) {
+        return;
+    }
+
+    mpv_node trackList {};
+    const int result = mpv_get_property(m_mpv, "track-list", MPV_FORMAT_NODE, &trackList);
+    if (result < 0) {
+        return;
+    }
+
+    QList<MpvTrack> tracks;
+    if (trackList.format == MPV_FORMAT_NODE_ARRAY && trackList.u.list != nullptr) {
+        tracks.reserve(trackList.u.list->num);
+        for (int index = 0; index < trackList.u.list->num; ++index) {
+            const mpv_node &entry = trackList.u.list->values[index];
+            MpvTrack track {
+                .id = nodeInteger(mapValue(entry, "id")),
+                .type = nodeString(mapValue(entry, "type")),
+                .title = nodeString(mapValue(entry, "title")),
+                .language = nodeString(mapValue(entry, "lang")),
+                .selected = nodeFlag(mapValue(entry, "selected")),
+                .external = nodeFlag(mapValue(entry, "external")),
+            };
+            if (track.id > 0 && (track.type == QStringLiteral("audio")
+                                  || track.type == QStringLiteral("sub"))) {
+                tracks.push_back(std::move(track));
+            }
+        }
+    }
+    mpv_free_node_contents(&trackList);
+    emit tracksChanged(tracks);
+}
+
 void MpvVideoWidget::reportMpvError(const QString &operation, int errorCode)
 {
     emit fatalError(
@@ -245,4 +420,3 @@ void MpvVideoWidget::reportMpvError(const QString &operation, int errorCode)
             .arg(operation, QString::fromUtf8(mpv_error_string(errorCode)))
     );
 }
-

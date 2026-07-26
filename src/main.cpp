@@ -1,11 +1,10 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDebug>
-#include <QMainWindow>
 #include <QSurfaceFormat>
 #include <QTimer>
 
-#include "player/MpvVideoWidget.hpp"
+#include "app/MainWindow.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -30,24 +29,18 @@ int main(int argc, char *argv[])
     parser.addPositionalArgument(QStringLiteral("video"), QStringLiteral("Local video used for player testing."));
     parser.process(application);
 
-    QMainWindow window;
-    auto *videoWidget = new MpvVideoWidget(&window);
-    window.setCentralWidget(videoWidget);
-    window.setWindowTitle(QStringLiteral("Juicy"));
-    window.resize(960, 600);
-
-    QObject::connect(videoWidget, &MpvVideoWidget::fatalError, [](const QString &message) {
+    MainWindow window;
+    QObject::connect(window.player(), &MpvVideoWidget::fatalError, [](const QString &message) {
         qCritical().noquote() << message;
     });
-    QObject::connect(videoWidget, &MpvVideoWidget::fileLoaded, [] {
+    QObject::connect(window.player(), &MpvVideoWidget::fileLoaded, [] {
         qInfo() << "libmpv loaded the video";
     });
-
     window.show();
 
     const QStringList arguments = parser.positionalArguments();
     if (!arguments.isEmpty()) {
-        videoWidget->loadFile(arguments.constFirst());
+        window.openLocalFile(arguments.constFirst());
     }
 
     bool parsed = false;

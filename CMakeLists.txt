@@ -18,6 +18,8 @@ pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 
 add_executable(juicy
   src/main.cpp
+  src/app/MainWindow.cpp
+  src/app/MainWindow.hpp
   src/player/MpvVideoWidget.cpp
   src/player/MpvVideoWidget.hpp
 )

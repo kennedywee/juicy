@@ -1,0 +1,4 @@
+CompileFlags:
+  # Qt6 adds this GCC-only flag to every target. clang rejects the whole
+  # command over it, so every Qt header then reports as missing.
+  Remove: [-mno-direct-extern-access]

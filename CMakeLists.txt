@@ -9,6 +9,9 @@ project(
 
 include(GNUInstallDirs)
 
+# Without this clangd has no Qt include paths and reports every Qt header as
+# missing, which buries real diagnostics under noise.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

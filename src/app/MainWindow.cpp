@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -17,7 +19,9 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMouseEvent>
+#include <QPair>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
@@ -27,9 +31,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStyle>
-#include <QStatusBar>
 #include <QTimer>
-#include <QVBoxLayout>
 #include <QWidget>
 
 namespace {
@@ -59,6 +61,10 @@ public:
 // Icons are painted rather than taken from a font: glyph fallback pulled each
 // symbol from a different family, so they never shared a weight or size.
 constexpr int kIconExtent = 14;
+
+// Both overlay bars are 8px padding around a ~26px control. The floating
+// diagnostics panel and toast inset by this much so they never sit under one.
+constexpr int kBarHeight = 44;
 
 QPainter beginIcon(QPixmap &pixmap)
 {
@@ -101,6 +107,66 @@ QIcon pauseIcon()
     return QIcon(pixmap);
 }
 
+void drawSpeakerBody(QPainter &painter)
+{
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(iconColor());
+    painter.drawPolygon(QPolygonF({
+        {1.5, 5.0}, {4.0, 5.0}, {7.0, 2.0},
+        {7.0, 12.0}, {4.0, 9.0}, {1.5, 9.0},
+    }));
+}
+
+QIcon volumeIcon()
+{
+    QPixmap pixmap;
+    QPainter painter = beginIcon(pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    drawSpeakerBody(painter);
+    painter.setBrush(Qt::NoBrush);
+    painter.setPen(QPen(iconColor(), 1.3, Qt::SolidLine, Qt::RoundCap));
+    // Sound waves: arcs opening to the right of the cone.
+    painter.drawArc(QRectF(6.0, 4.0, 4.0, 6.0), -80 * 16, 160 * 16);
+    painter.drawArc(QRectF(6.0, 1.5, 7.0, 11.0), -70 * 16, 140 * 16);
+    painter.end();
+    return QIcon(pixmap);
+}
+
+QIcon mutedIcon()
+{
+    QPixmap pixmap;
+    QPainter painter = beginIcon(pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    drawSpeakerBody(painter);
+    painter.setBrush(Qt::NoBrush);
+    painter.setPen(QPen(iconColor(), 1.4, Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(QPointF(9.0, 5.0), QPointF(12.5, 9.0));
+    painter.drawLine(QPointF(12.5, 5.0), QPointF(9.0, 9.0));
+    painter.end();
+    return QIcon(pixmap);
+}
+
+QIcon settingsIcon()
+{
+    QPixmap pixmap;
+    QPainter painter = beginIcon(pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.translate(kIconExtent / 2.0, kIconExtent / 2.0);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(iconColor());
+    // Solid cog with the hub punched back out, so it matches the filled
+    // play/pause icons instead of reading as a thin sunburst.
+    painter.drawEllipse(QPointF(0.0, 0.0), 4.4, 4.4);
+    for (int tooth = 0; tooth < 8; ++tooth) {
+        painter.drawRoundedRect(QRectF(-1.15, -6.3, 2.3, 3.0), 0.6, 0.6);
+        painter.rotate(45.0);
+    }
+    painter.setCompositionMode(QPainter::CompositionMode_Clear);
+    painter.drawEllipse(QPointF(0.0, 0.0), 1.7, 1.7);
+    painter.end();
+    return QIcon(pixmap);
+}
+
 QIcon fullscreenIcon()
 {
     QPixmap pixmap;
@@ -135,6 +201,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     buildInterface();
+    m_diagnostics->setPlaybackState(QStringLiteral("Idle"));
     m_torrentSession = new TorrentSession(this);
     setWindowTitle(QStringLiteral("Juicy"));
     resize(1100, 720);
@@ -144,21 +211,23 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_player, &MpvVideoWidget::pauseChanged, this, &MainWindow::updatePaused);
     connect(m_player, &MpvVideoWidget::tracksChanged, this, &MainWindow::updateTracks);
     connect(m_player, &MpvVideoWidget::fatalError, this, [this](const QString &message) {
-        m_statusBar->showMessage(message, 8000);
-        m_playbackStatus->setText(QStringLiteral("Player error"));
+        showToast(message);
+        m_diagnostics->setError(message);
+        m_diagnostics->setPlaybackState(QStringLiteral("Player error"));
     });
     connect(m_player, &MpvVideoWidget::playbackError, this, [this](const QString &message) {
-        m_statusBar->showMessage(message, 8000);
-        m_playbackStatus->setText(message);
+        showToast(message);
+        m_diagnostics->setError(message);
+        m_diagnostics->setPlaybackState(QStringLiteral("Error"));
     });
     connect(m_player, &MpvVideoWidget::playbackRetrying, this, [this](int attempt) {
-        m_playbackStatus->setText(
-            QStringLiteral("Retrying video… (%1/2)").arg(attempt)
-        );
+        const QString message = QStringLiteral("Retrying video… (%1/2)").arg(attempt);
+        showToast(message);
+        m_diagnostics->setPlaybackState(message);
     });
     connect(m_player, &MpvVideoWidget::fileLoaded, this, [this] {
         m_torrentFileLoaded = true;
-        m_playbackStatus->setText(QStringLiteral("Playing"));
+        m_diagnostics->setPlaybackState(QStringLiteral("Playing"));
     });
     connect(
         m_player,
@@ -172,11 +241,21 @@ MainWindow::MainWindow(QWidget *parent)
         this,
         &MainWindow::updateTorrentFiles
     );
-    connect(m_torrentSession, &TorrentSession::statusChanged, this, [this](const QString &status) {
-        m_statusBar->showMessage(status);
-    });
+    connect(
+        m_torrentSession,
+        &TorrentSession::statusChanged,
+        m_diagnostics,
+        &DiagnosticsPanel::setTorrentStatus
+    );
+    connect(
+        m_torrentSession,
+        &TorrentSession::statsChanged,
+        m_diagnostics,
+        &DiagnosticsPanel::setTorrentStats
+    );
     connect(m_torrentSession, &TorrentSession::errorOccurred, this, [this](const QString &message) {
-        m_statusBar->showMessage(message, 8000);
+        showToast(message);
+        m_diagnostics->setError(message);
     });
     connect(
         m_torrentSession,
@@ -186,8 +265,8 @@ MainWindow::MainWindow(QWidget *parent)
             m_torrentFileLoaded = false;
             m_player->setTorrentContent(content);
             m_player->loadFile(QStringLiteral("juicy://video"));
-            m_playbackStatus->setText(QStringLiteral("Opening video…"));
-            m_statusBar->showMessage(QStringLiteral("Buffering %1…").arg(file.name));
+            m_diagnostics->setPlaybackState(QStringLiteral("Opening video…"));
+            showToast(QStringLiteral("Buffering %1…").arg(file.name));
         }
     );
     connect(
@@ -196,7 +275,7 @@ MainWindow::MainWindow(QWidget *parent)
         this,
         [this](const QString &path) {
             if (!m_torrentFileLoaded) {
-                m_playbackStatus->setText(QStringLiteral("Opening completed file…"));
+                m_diagnostics->setPlaybackState(QStringLiteral("Opening completed file…"));
                 m_player->loadFile(path);
             }
         }
@@ -212,6 +291,10 @@ MainWindow::MainWindow(QWidget *parent)
             setControlsVisible(false);
         }
     });
+    m_toastTimer = new QTimer(this);
+    m_toastTimer->setSingleShot(true);
+    m_toastTimer->setInterval(6000);
+    connect(m_toastTimer, &QTimer::timeout, m_toast, &QLabel::hide);
     m_clickTimer = new QTimer(this);
     m_clickTimer->setSingleShot(true);
     m_clickTimer->setInterval(QApplication::doubleClickInterval());
@@ -284,6 +367,9 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     case Qt::Key_F:
         toggleFullscreen();
         break;
+    case Qt::Key_D:
+        setDiagnosticsVisible(!m_diagnostics->isVisible());
+        break;
     case Qt::Key_Escape:
         if (!isFullScreen()) {
             QMainWindow::keyPressEvent(event);
@@ -307,31 +393,40 @@ void MainWindow::seekBy(double seconds)
     }
     const double target = qBound(0.0, m_position + seconds, m_duration);
     m_player->seekTo(target);
-    m_statusBar->showMessage(
-        QStringLiteral("%1%2s · %3")
-            .arg(seconds > 0.0 ? QStringLiteral("+") : QString())
-            .arg(seconds, 0, 'f', 0)
-            .arg(formatTime(target)),
-        2000
-    );
 }
 
 void MainWindow::adjustVolume(int delta)
 {
     // Drives the existing slider connection, so the UI stays in sync.
-    const int volume = qBound(0, m_volumeSlider->value() + delta, 100);
-    m_volumeSlider->setValue(volume);
-    m_statusBar->showMessage(QStringLiteral("Volume %1%").arg(volume), 2000);
+    m_volumeSlider->setValue(qBound(0, m_volumeSlider->value() + delta, 100));
 }
 
 void MainWindow::toggleMute()
 {
     m_muted = !m_muted;
     m_player->setMuted(m_muted);
-    m_statusBar->showMessage(
-        m_muted ? QStringLiteral("Muted") : QStringLiteral("Unmuted"),
-        2000
+    m_volumeButton->setIcon(m_muted ? m_mutedIcon : m_volumeIcon);
+    m_volumeButton->setToolTip(
+        m_muted ? QStringLiteral("Unmute") : QStringLiteral("Mute")
     );
+}
+
+// Errors and buffering only: routine volume/seek/fit changes are already
+// visible in the bar, and any key press brings the bar back on screen.
+void MainWindow::showToast(const QString &message)
+{
+    m_toast->setText(message);
+    m_toast->show();
+    m_toast->raise();
+    m_toastTimer->start();
+}
+
+void MainWindow::setDiagnosticsVisible(bool visible)
+{
+    m_diagnostics->setVisible(visible);
+    m_diagnostics->raise();
+    const QSignalBlocker blocker(m_diagnosticsAction);
+    m_diagnosticsAction->setChecked(visible);
 }
 
 void MainWindow::showControls()
@@ -380,26 +475,24 @@ void MainWindow::setAutoStream(bool enabled)
 
 void MainWindow::setAnime4kProfile(const QString &profile)
 {
-    const int index = m_anime4kProfile->findData(profile.toLower());
-    if (index >= 0) {
-        if (m_anime4kProfile->currentIndex() == index) {
+    const QList<QAction *> actions = m_anime4kMenu->actions();
+    for (int index = 0; index < actions.size(); ++index) {
+        if (actions.at(index)->data().toString() == profile.toLower()) {
+            actions.at(index)->setChecked(true);
             applyAnime4kProfile(index);
-        } else {
-            m_anime4kProfile->setCurrentIndex(index);
+            return;
         }
     }
 }
 
 void MainWindow::setContentFit(const QString &mode)
 {
-    const int index = m_contentFit->findData(mode.toLower());
-    if (index < 0) {
-        return;
-    }
-    if (m_contentFit->currentIndex() == index) {
-        m_player->setContentFit(mode.toLower());
-    } else {
-        m_contentFit->setCurrentIndex(index);
+    for (QAction *action : m_contentFitMenu->actions()) {
+        if (action->data().toString() == mode.toLower()) {
+            action->setChecked(true);
+            m_player->setContentFit(mode.toLower());
+            return;
+        }
     }
 }
 
@@ -489,45 +582,87 @@ void MainWindow::updatePaused(bool paused)
     }
     m_playButton->setIcon(paused ? m_playIcon : m_pauseIcon);
     m_playButton->setToolTip(paused ? QStringLiteral("Play") : QStringLiteral("Pause"));
+    if (m_torrentFileLoaded) {
+        m_diagnostics->setPlaybackState(
+            paused ? QStringLiteral("Paused") : QStringLiteral("Playing")
+        );
+    }
 }
 
 void MainWindow::updateTracks(const QList<MpvTrack> &tracks)
 {
-    const QSignalBlocker audioBlocker(m_audioTracks);
-    const QSignalBlocker subtitleBlocker(m_subtitleTracks);
-    m_audioTracks->clear();
-    m_subtitleTracks->clear();
-    m_subtitleTracks->addItem(QStringLiteral("Subtitles off"), QVariant::fromValue<qint64>(0));
+    populateTrackMenu(
+        m_audioMenu,
+        m_audioGroup,
+        tracks,
+        QStringLiteral("audio"),
+        false,
+        &MpvVideoWidget::selectAudioTrack
+    );
+    populateTrackMenu(
+        m_subtitleMenu,
+        m_subtitleGroup,
+        tracks,
+        QStringLiteral("sub"),
+        true,
+        &MpvVideoWidget::selectSubtitleTrack
+    );
+}
 
+void MainWindow::populateTrackMenu(
+    QMenu *menu,
+    QActionGroup *&group,
+    const QList<MpvTrack> &tracks,
+    const QString &type,
+    bool includeOff,
+    void (MpvVideoWidget::*select)(qint64)
+)
+{
+    menu->clear();
+    // The group owns nothing the menu just deleted, but it outlives clear(),
+    // so it has to go too or stale groups pile up on every track change.
+    delete group;
+    group = new QActionGroup(menu);
+    group->setExclusive(true);
+
+    const auto addEntry = [&](const QString &text, qint64 id, bool checked) {
+        QAction *action = menu->addAction(text);
+        action->setCheckable(true);
+        action->setChecked(checked);
+        group->addAction(action);
+        connect(action, &QAction::triggered, this, [this, select, id] {
+            (m_player->*select)(id);
+        });
+    };
+
+    bool anySelected = false;
     for (const MpvTrack &track : tracks) {
-        QComboBox *combo = track.type == QStringLiteral("audio")
-            ? m_audioTracks
-            : m_subtitleTracks;
-        combo->addItem(trackLabel(track), QVariant::fromValue(track.id));
-        if (track.selected) {
-            combo->setCurrentIndex(combo->count() - 1);
+        if (track.type != type) {
+            continue;
+        }
+        anySelected = anySelected || track.selected;
+    }
+    if (includeOff) {
+        addEntry(QStringLiteral("Off"), 0, !anySelected);
+    }
+    for (const MpvTrack &track : tracks) {
+        if (track.type == type) {
+            addEntry(trackLabel(track), track.id, track.selected);
         }
     }
-
-    m_audioTracks->setEnabled(m_audioTracks->count() > 0);
-    m_subtitleTracks->setEnabled(m_subtitleTracks->count() > 1);
+    menu->setEnabled(menu->actions().size() > (includeOff ? 1 : 0));
 }
 
 void MainWindow::applyAnime4kProfile(int index)
 {
     const QStringList shaderFiles = anime4kShaderFiles(index);
     if (index > 0 && shaderFiles.isEmpty()) {
-        m_statusBar->showMessage(QStringLiteral("Anime4K shaders are unavailable."), 5000);
-        m_anime4kProfile->setCurrentIndex(0);
+        showToast(QStringLiteral("Anime4K shaders are unavailable."));
+        m_anime4kMenu->actions().constFirst()->setChecked(true);
         m_player->setShaderFiles({});
         return;
     }
-
     m_player->setShaderFiles(shaderFiles);
-    const QString label = index > 0
-        ? m_anime4kProfile->itemText(index)
-        : QStringLiteral("Anime4K disabled");
-    m_statusBar->showMessage(label, 2500);
 }
 
 QString MainWindow::formatTime(double seconds)
@@ -653,109 +788,119 @@ void MainWindow::buildInterface()
     sourceBar->addWidget(m_streamButton);
     layout->addWidget(m_topPanel, 0, 0, Qt::AlignTop);
 
+    // Transparent layer between the video and the control panels, so the
+    // diagnostics panel and the toast can float without hiding with the bar.
+    // Mouse-transparent: clicks fall through to the video underneath.
+    auto *overlayLayer = new QWidget(container);
+    overlayLayer->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    auto *overlayGrid = new QGridLayout(overlayLayer);
+    overlayGrid->setContentsMargins(12, kBarHeight + 12, 12, kBarHeight + 12);
+
+    m_diagnostics = new DiagnosticsPanel(overlayLayer);
+    m_diagnostics->hide();
+    connect(m_diagnostics, &DiagnosticsPanel::closeRequested, this, [this] {
+        setDiagnosticsVisible(false);
+    });
+    overlayGrid->addWidget(m_diagnostics, 0, 0, Qt::AlignTop | Qt::AlignRight);
+
+    m_toast = new QLabel(overlayLayer);
+    m_toast->setObjectName(QStringLiteral("toast"));
+    m_toast->setAttribute(Qt::WA_StyledBackground, true);
+    m_toast->hide();
+    // Top-left, not bottom-left: the bottom of the frame is the subtitle band,
+    // which is exactly what this redesign set out to keep clear.
+    overlayGrid->addWidget(m_toast, 0, 0, Qt::AlignTop | Qt::AlignLeft);
+    layout->addWidget(overlayLayer, 0, 0);
+
     m_bottomPanel = new QWidget(container);
     m_bottomPanel->setObjectName(QStringLiteral("overlayPanel"));
     m_bottomPanel->setAttribute(Qt::WA_StyledBackground, true);
-    auto *bottomLayout = new QVBoxLayout(m_bottomPanel);
-    bottomLayout->setContentsMargins(0, 6, 0, 0);
-    bottomLayout->setSpacing(6);
+    // One row, same padding as the source bar above, so both read as one frame.
+    auto *controls = new QHBoxLayout(m_bottomPanel);
+    controls->setContentsMargins(12, 8, 12, 8);
+    controls->setSpacing(8);
 
-    auto *timeline = new QHBoxLayout;
-    timeline->setContentsMargins(12, 0, 12, 0);
+    m_playIcon = playIcon();
+    m_pauseIcon = pauseIcon();
+    m_volumeIcon = volumeIcon();
+    m_mutedIcon = mutedIcon();
+
+    const auto barButton = [&container](const QIcon &icon, const QString &tip) {
+        auto *button = new QPushButton(container);
+        button->setObjectName(QStringLiteral("barButton"));
+        button->setIcon(icon);
+        button->setFixedWidth(34);
+        button->setToolTip(tip);
+        return button;
+    };
+
+    m_playButton = barButton(m_pauseIcon, QStringLiteral("Pause"));
+    m_volumeButton = barButton(m_volumeIcon, QStringLiteral("Mute"));
+    auto *settingsButton = barButton(settingsIcon(), QStringLiteral("Settings"));
+    auto *fullscreen = barButton(fullscreenIcon(), QStringLiteral("Fullscreen"));
+
     m_seekSlider = new QSlider(Qt::Horizontal, container);
     m_seekSlider->setRange(0, 1000);
     auto *seekStyle = new AbsoluteSeekStyle;
     seekStyle->setParent(m_seekSlider);
     m_seekSlider->setStyle(seekStyle);
+
     m_timeLabel = new QLabel(QStringLiteral("0:00 / 0:00"), container);
-    m_timeLabel->setMinimumWidth(105);
-    timeline->addWidget(m_seekSlider, 1);
-    timeline->addWidget(m_timeLabel);
-    bottomLayout->addLayout(timeline);
-
-    auto *controls = new QHBoxLayout;
-    controls->setContentsMargins(12, 0, 12, 0);
-
-    m_playIcon = playIcon();
-    m_pauseIcon = pauseIcon();
-    m_playButton = new QPushButton(container);
-    m_playButton->setIcon(m_pauseIcon);
-    m_playButton->setFixedWidth(46);
-    m_playButton->setToolTip(QStringLiteral("Pause"));
+    m_timeLabel->setAlignment(Qt::AlignCenter);
 
     m_volumeSlider = new QSlider(Qt::Horizontal, container);
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(100);
-    m_volumeSlider->setMaximumWidth(110);
+    m_volumeSlider->setFixedWidth(84);
     m_volumeSlider->setToolTip(QStringLiteral("Volume"));
 
-    m_audioTracks = new QComboBox(container);
-    m_audioTracks->setMinimumWidth(135);
-    m_audioTracks->setToolTip(QStringLiteral("Audio track"));
-    m_audioTracks->setEnabled(false);
-
-    m_subtitleTracks = new QComboBox(container);
-    m_subtitleTracks->setMinimumWidth(155);
-    m_subtitleTracks->setToolTip(QStringLiteral("Subtitle track"));
-    m_subtitleTracks->setEnabled(false);
-
-    m_contentFit = new QComboBox(container);
-    m_contentFit->setToolTip(QStringLiteral("Content fit"));
-    m_contentFit->addItem(QStringLiteral("Fit"), QStringLiteral("fit"));
-    m_contentFit->addItem(QStringLiteral("Cover"), QStringLiteral("cover"));
-    m_contentFit->addItem(QStringLiteral("Stretch"), QStringLiteral("stretch"));
-    m_contentFit->addItem(QStringLiteral("Original"), QStringLiteral("original"));
-
-    auto *addSubtitle = new QPushButton(QStringLiteral("+ Subtitle"), container);
-    m_anime4kProfile = new QComboBox(container);
-    m_anime4kProfile->addItem(QStringLiteral("Anime4K off"), QStringLiteral("off"));
-    m_anime4kProfile->addItem(QStringLiteral("Anime4K fast"), QStringLiteral("fast"));
-    m_anime4kProfile->addItem(QStringLiteral("Anime4K quality"), QStringLiteral("quality"));
-    m_anime4kProfile->setEnabled(!anime4kDirectory().isEmpty());
-
-    auto *fullscreen = new QPushButton(container);
-    fullscreen->setIcon(fullscreenIcon());
-    fullscreen->setFixedWidth(46);
-    fullscreen->setToolTip(QStringLiteral("Fullscreen"));
-
     controls->addWidget(m_playButton);
-    controls->addWidget(new QLabel(QStringLiteral("Volume"), container));
+    controls->addWidget(m_seekSlider, 1);
+    controls->addWidget(m_timeLabel);
+    controls->addWidget(m_volumeButton);
     controls->addWidget(m_volumeSlider);
-    controls->addStretch(1);
-    controls->addWidget(m_audioTracks);
-    controls->addWidget(m_subtitleTracks);
-    controls->addWidget(addSubtitle);
-    controls->addWidget(m_contentFit);
-    controls->addWidget(m_anime4kProfile);
+    controls->addWidget(settingsButton);
     controls->addWidget(fullscreen);
-    bottomLayout->addLayout(controls);
-
-    // Lives inside the overlay rather than QMainWindow's own status bar, which
-    // sat below the central widget and resized the video whenever it hid.
-    m_statusBar = new QStatusBar(m_bottomPanel);
-    m_statusBar->setObjectName(QStringLiteral("overlayStatus"));
-    m_statusBar->setSizeGripEnabled(false);
-    bottomLayout->addWidget(m_statusBar);
+    // A line edit is a few pixels taller than a push button, so the two bars
+    // would not match on their own. Pin the control bar to the source bar.
+    m_bottomPanel->setFixedHeight(m_topPanel->sizeHint().height());
     layout->addWidget(m_bottomPanel, 0, 0, Qt::AlignBottom);
+
+    buildSettingsMenu();
 
     const QString overlayStyle = QStringLiteral(
         "#overlayPanel { background-color: rgba(40, 35, 32, 215); }"
-        "#overlayStatus { background-color: #282320; }"
+        "#barButton { padding: 4px 8px; }"
+        "#toast {"
+        "  background-color: rgba(40, 35, 32, 235);"
+        "  border: 1px solid #4c453d;"
+        "  border-radius: 2px;"
+        "  padding: 6px 10px;"
+        "}"
     );
     m_topPanel->setStyleSheet(overlayStyle);
     m_bottomPanel->setStyleSheet(overlayStyle);
+    m_toast->setStyleSheet(overlayStyle);
     m_topPanel->raise();
     m_bottomPanel->raise();
     setCentralWidget(container);
-    m_playbackStatus = new QLabel(QStringLiteral("Idle"), m_statusBar);
-    m_statusBar->addPermanentWidget(m_playbackStatus);
 
     connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadMagnet);
     connect(m_magnetInput, &QLineEdit::returnPressed, this, &MainWindow::loadMagnet);
     connect(m_streamButton, &QPushButton::clicked, this, &MainWindow::startTorrentPlayback);
     connect(m_playButton, &QPushButton::clicked, this, &MainWindow::togglePlayback);
-    connect(addSubtitle, &QPushButton::clicked, this, &MainWindow::chooseSubtitleFile);
+    connect(m_volumeButton, &QPushButton::clicked, this, &MainWindow::toggleMute);
     connect(fullscreen, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
+    connect(settingsButton, &QPushButton::clicked, this, [this, settingsButton] {
+        // Anchored above the button and right-aligned with it; Qt would
+        // otherwise drop the menu off the bottom of the screen in fullscreen.
+        const QPoint corner = settingsButton->mapToGlobal(QPoint(0, 0));
+        const QSize size = m_settingsMenu->sizeHint();
+        m_settingsMenu->popup(QPoint(
+            corner.x() + settingsButton->width() - size.width(),
+            corner.y() - size.height() - 6
+        ));
+    });
     connect(m_volumeSlider, &QSlider::valueChanged, m_player, &MpvVideoWidget::setVolume);
     connect(m_seekSlider, &QSlider::sliderReleased, this, [this] {
         if (m_duration > 0.0) {
@@ -764,30 +909,79 @@ void MainWindow::buildInterface()
             );
         }
     });
-    connect(m_audioTracks, &QComboBox::currentIndexChanged, this, [this](int index) {
-        m_player->selectAudioTrack(m_audioTracks->itemData(index).toLongLong());
-    });
-    connect(m_subtitleTracks, &QComboBox::currentIndexChanged, this, [this](int index) {
-        m_player->selectSubtitleTrack(m_subtitleTracks->itemData(index).toLongLong());
-    });
-    connect(m_contentFit, &QComboBox::currentIndexChanged, this, [this](int index) {
-        m_player->setContentFit(m_contentFit->itemData(index).toString());
-        m_statusBar->showMessage(
-            QStringLiteral("Content fit: %1").arg(m_contentFit->itemText(index)),
-            2500
-        );
-    });
+}
+
+void MainWindow::buildSettingsMenu()
+{
+    m_settingsMenu = new QMenu(this);
+
+    m_audioMenu = m_settingsMenu->addMenu(QStringLiteral("Audio track"));
+    m_audioMenu->setEnabled(false);
+    m_subtitleMenu = m_settingsMenu->addMenu(QStringLiteral("Subtitle track"));
+    m_subtitleMenu->setEnabled(false);
     connect(
-        m_anime4kProfile,
-        &QComboBox::currentIndexChanged,
+        m_settingsMenu->addAction(QStringLiteral("Add subtitle file…")),
+        &QAction::triggered,
         this,
-        &MainWindow::applyAnime4kProfile
+        &MainWindow::chooseSubtitleFile
     );
+
+    m_settingsMenu->addSeparator();
+    m_contentFitMenu = addChoiceMenu(QStringLiteral("Content fit"), {
+        {QStringLiteral("Fit"), QStringLiteral("fit")},
+        {QStringLiteral("Cover"), QStringLiteral("cover")},
+        {QStringLiteral("Stretch"), QStringLiteral("stretch")},
+        {QStringLiteral("Original"), QStringLiteral("original")},
+    });
+    connect(m_contentFitMenu, &QMenu::triggered, this, [this](QAction *action) {
+        m_player->setContentFit(action->data().toString());
+    });
+
+    m_anime4kMenu = addChoiceMenu(QStringLiteral("Anime4K"), {
+        {QStringLiteral("Off"), QStringLiteral("off")},
+        {QStringLiteral("Fast"), QStringLiteral("fast")},
+        {QStringLiteral("Quality"), QStringLiteral("quality")},
+    });
+    m_anime4kMenu->setEnabled(!anime4kDirectory().isEmpty());
+    connect(m_anime4kMenu, &QMenu::triggered, this, [this](QAction *action) {
+        applyAnime4kProfile(static_cast<int>(m_anime4kMenu->actions().indexOf(action)));
+    });
+
+    m_settingsMenu->addSeparator();
+    // Tab-separated so the menu renders "D" in its shortcut column without
+    // registering a real QShortcut, which would fire while typing a magnet.
+    m_diagnosticsAction = m_settingsMenu->addAction(QStringLiteral("Diagnostics\tD"));
+    m_diagnosticsAction->setCheckable(true);
+    connect(
+        m_diagnosticsAction,
+        &QAction::toggled,
+        this,
+        &MainWindow::setDiagnosticsVisible
+    );
+}
+
+QMenu *MainWindow::addChoiceMenu(
+    const QString &title,
+    const QList<QPair<QString, QString>> &entries
+)
+{
+    QMenu *menu = m_settingsMenu->addMenu(title);
+    auto *group = new QActionGroup(menu);
+    group->setExclusive(true);
+    for (const QPair<QString, QString> &entry : entries) {
+        QAction *action = menu->addAction(entry.first);
+        action->setCheckable(true);
+        action->setData(entry.second);
+        group->addAction(action);
+    }
+    menu->actions().constFirst()->setChecked(true);
+    return menu;
 }
 
 void MainWindow::updateTimeLabel()
 {
-    m_timeLabel->setText(
-        QStringLiteral("%1 / %2").arg(formatTime(m_position), formatTime(m_duration))
-    );
+    const QString text =
+        QStringLiteral("%1 / %2").arg(formatTime(m_position), formatTime(m_duration));
+    m_timeLabel->setText(text);
+    m_diagnostics->setPosition(text);
 }

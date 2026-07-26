@@ -3,15 +3,17 @@
 #include <QIcon>
 #include <QMainWindow>
 
+#include "app/DiagnosticsPanel.hpp"
 #include "player/MpvVideoWidget.hpp"
 #include "torrent/TorrentSession.hpp"
 
+class QActionGroup;
 class QComboBox;
 class QLabel;
 class QLineEdit;
+class QMenu;
 class QPushButton;
 class QSlider;
-class QStatusBar;
 class QTimer;
 
 class MainWindow final : public QMainWindow
@@ -51,8 +53,23 @@ private:
     static QString anime4kDirectory();
     static QStringList anime4kShaderFiles(int profileIndex);
     void buildInterface();
+    void buildSettingsMenu();
+    QMenu *addChoiceMenu(
+        const QString &title,
+        const QList<QPair<QString, QString>> &entries
+    );
+    void populateTrackMenu(
+        QMenu *menu,
+        QActionGroup *&group,
+        const QList<MpvTrack> &tracks,
+        const QString &type,
+        bool includeOff,
+        void (MpvVideoWidget::*select)(qint64)
+    );
     void updateTimeLabel();
     void showControls();
+    void showToast(const QString &message);
+    void setDiagnosticsVisible(bool visible);
     void seekBy(double seconds);
     void adjustVolume(int delta);
     void toggleMute();
@@ -61,25 +78,33 @@ private:
 
     MpvVideoWidget *m_player = nullptr;
     TorrentSession *m_torrentSession = nullptr;
+    DiagnosticsPanel *m_diagnostics = nullptr;
     QLineEdit *m_magnetInput = nullptr;
     QComboBox *m_videoFiles = nullptr;
     QPushButton *m_streamButton = nullptr;
     QPushButton *m_playButton = nullptr;
+    QPushButton *m_volumeButton = nullptr;
     QSlider *m_seekSlider = nullptr;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
-    QComboBox *m_audioTracks = nullptr;
-    QComboBox *m_subtitleTracks = nullptr;
-    QComboBox *m_anime4kProfile = nullptr;
-    QComboBox *m_contentFit = nullptr;
-    QLabel *m_playbackStatus = nullptr;
-    QStatusBar *m_statusBar = nullptr;
+    QLabel *m_toast = nullptr;
+    QMenu *m_settingsMenu = nullptr;
+    QMenu *m_audioMenu = nullptr;
+    QMenu *m_subtitleMenu = nullptr;
+    QMenu *m_contentFitMenu = nullptr;
+    QMenu *m_anime4kMenu = nullptr;
+    QActionGroup *m_audioGroup = nullptr;
+    QActionGroup *m_subtitleGroup = nullptr;
+    QAction *m_diagnosticsAction = nullptr;
     QWidget *m_topPanel = nullptr;
     QWidget *m_bottomPanel = nullptr;
     QTimer *m_hideControlsTimer = nullptr;
+    QTimer *m_toastTimer = nullptr;
     QTimer *m_clickTimer = nullptr;
     QIcon m_playIcon;
     QIcon m_pauseIcon;
+    QIcon m_volumeIcon;
+    QIcon m_mutedIcon;
     double m_position = 0.0;
     double m_duration = 0.0;
     bool m_paused = false;

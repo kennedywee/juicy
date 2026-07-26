@@ -46,6 +46,8 @@ set_target_properties(Libtorrent::Rasterbar PROPERTIES
 
 add_executable(juicy
   src/main.cpp
+  src/app/DiagnosticsPanel.cpp
+  src/app/DiagnosticsPanel.hpp
   src/app/MainWindow.cpp
   src/app/MainWindow.hpp
   src/player/MpvVideoWidget.cpp

@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <QDir>
+#include <QDebug>
 
 #include <libtorrent/torrent_info.hpp>
 
@@ -20,6 +21,12 @@ namespace {
 constexpr qint64 kReadAheadBytes = 32LL * 1024LL * 1024LL;
 constexpr int kMaximumDeadlineMs = 10'000;
 constexpr int kMaximumReadAheadPieces = 64;
+
+bool streamTraceEnabled()
+{
+    static const bool enabled = qEnvironmentVariableIsSet("JUICY_TRACE_STREAM");
+    return enabled;
+}
 
 } // namespace
 
@@ -38,6 +45,13 @@ TorrentContent::TorrentContent(
     m_fileSize = storage.file_size(index);
     m_pieceLength = information->piece_length();
     m_numPieces = information->num_pieces();
+    if (streamTraceEnabled()) {
+        qInfo().noquote() << "torrent stream:"
+                          << m_filePath
+                          << "size" << m_fileSize
+                          << "torrent offset" << m_fileStart
+                          << "piece length" << m_pieceLength;
+    }
 }
 
 TorrentContent::~TorrentContent()
@@ -85,9 +99,15 @@ bool TorrentContent::waitForByte(qint64 fileOffset, const std::atomic_bool &canc
 
     prioritizeFrom(fileOffset);
     const lt::piece_index_t pieceIndex(piece);
+    if (streamTraceEnabled()) {
+        qInfo() << "torrent stream: waiting for offset" << fileOffset << "piece" << piece;
+    }
     std::unique_lock lock(m_waitMutex);
     while (!m_stopping.load() && !cancelled.load()) {
         if (m_handle.is_valid() && m_handle.have_piece(pieceIndex)) {
+            if (streamTraceEnabled()) {
+                qInfo() << "torrent stream: piece available" << piece;
+            }
             return true;
         }
         m_pieceChanged.wait_for(lock, std::chrono::milliseconds(200));
@@ -163,6 +183,7 @@ std::int64_t TorrentFileStream::read(char *buffer, std::uint64_t byteCount)
 
     const qint64 remaining = m_content->size() - m_position;
     const qint64 pieceRemaining = m_content->bytesUntilPieceEnd(m_position);
+    const qint64 readOffset = m_position;
     const qint64 requested = std::min<qint64>(
         {
             remaining,
@@ -180,9 +201,19 @@ std::int64_t TorrentFileStream::read(char *buffer, std::uint64_t byteCount)
         );
     } while (bytesRead < 0 && errno == EINTR);
     if (bytesRead < 0) {
+        if (streamTraceEnabled()) {
+            qWarning() << "torrent stream: pread failed at" << readOffset
+                       << "errno" << errno;
+        }
         return -1;
     }
     m_position += bytesRead;
+    if (streamTraceEnabled() && m_traceEvents++ < 80) {
+        qInfo() << "torrent stream: read" << bytesRead << "bytes at" << readOffset
+                << "prefix"
+                << QByteArray(buffer, static_cast<qsizetype>(std::min<ssize_t>(bytesRead, 8)))
+                       .toHex();
+    }
     return bytesRead;
 }
 
@@ -194,6 +225,9 @@ std::int64_t TorrentFileStream::seek(std::int64_t offset)
 
     std::scoped_lock lock(m_positionMutex);
     m_position = offset;
+    if (streamTraceEnabled() && m_traceEvents++ < 80) {
+        qInfo() << "torrent stream: seek to" << offset;
+    }
     if (offset < m_content->size()) {
         m_content->prioritizeFrom(offset);
     }

@@ -78,4 +78,5 @@ private:
     qint64 m_position = 0;
     int m_fileDescriptor = -1;
     std::atomic_bool m_cancelled = false;
+    int m_traceEvents = 0;
 };

@@ -364,7 +364,7 @@ bool MpvVideoWidget::initializeMpv()
 {
     m_mpv = mpv_create();
     if (m_mpv == nullptr) {
-        emit fatalError(QStringLiteral("Unable to create a libmpv instance."));
+        reportMpvError(QStringLiteral("Creating a libmpv instance"), MPV_ERROR_GENERIC);
         return false;
     }
 
@@ -557,8 +557,11 @@ void MpvVideoWidget::refreshTracks()
 
 void MpvVideoWidget::reportMpvError(const QString &operation, int errorCode)
 {
-    emit fatalError(
-        QStringLiteral("%1 failed: %2")
-            .arg(operation, QString::fromUtf8(mpv_error_string(errorCode)))
-    );
+    const QString message = QStringLiteral("%1 failed: %2")
+        .arg(operation, QString::fromUtf8(mpv_error_string(errorCode)));
+    qCritical().noquote() << message;
+    // Queued so errors raised inside the constructor still reach listeners.
+    QMetaObject::invokeMethod(this, [this, message] {
+        emit fatalError(message);
+    }, Qt::QueuedConnection);
 }

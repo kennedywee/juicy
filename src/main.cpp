@@ -1,3 +1,5 @@
+#include <clocale>
+
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDebug>
@@ -24,6 +26,8 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
 
     QApplication application(argc, argv);
+    // libmpv requires LC_NUMERIC to be "C"; QApplication resets it from the environment.
+    std::setlocale(LC_NUMERIC, "C");
     const QString sourceIcon = QStringLiteral(JUICY_SOURCE_ICON);
     if (QFileInfo::exists(sourceIcon)) {
         QApplication::setWindowIcon(QIcon(sourceIcon));
